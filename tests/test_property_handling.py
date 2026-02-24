@@ -55,7 +55,12 @@ class TestDictToElements:
     def test_int_value(self):
         elems = dict_to_elements({"zoneID": 7})
         assert len(elems) == 1
-        assert elems[0].value.v_int64 == 7
+        assert elems[0].value.v_uint64 == 7
+
+    def test_negative_int_value(self):
+        elems = dict_to_elements({"offset": -3})
+        assert len(elems) == 1
+        assert elems[0].value.v_int64 == -3
 
     def test_bool_value(self):
         elems = dict_to_elements({"active": True})

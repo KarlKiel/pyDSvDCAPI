@@ -322,6 +322,74 @@ class TestDeriveSubdevice:
 
 
 # ---------------------------------------------------------------------------
+# same_device / device_base
+# ---------------------------------------------------------------------------
+
+class TestSameDevice:
+    """Tests for DsUid.same_device() — §5.2 multi-vdSD grouping."""
+
+    def test_same_device_derived(self):
+        base = DsUid.random()
+        d0 = base.derive_subdevice(0)
+        d1 = base.derive_subdevice(1)
+        d2 = base.derive_subdevice(2)
+        assert d0.same_device(d1)
+        assert d1.same_device(d2)
+        assert d0.same_device(d2)
+
+    def test_same_device_self(self):
+        d = DsUid.random(subdevice_index=3)
+        assert d.same_device(d)
+
+    def test_not_same_device(self):
+        d1 = DsUid.random()
+        d2 = DsUid.random()
+        assert not d1.same_device(d2)
+
+    def test_same_device_sparse_enumeration(self):
+        """§5.2 allows sparse enumeration (e.g. 0, 2 for dual rocker)."""
+        base = DsUid.from_enocean("0512ABCD")
+        rocker_a = base.derive_subdevice(0)
+        rocker_b = base.derive_subdevice(2)
+        assert rocker_a.same_device(rocker_b)
+        assert rocker_a.subdevice_index == 0
+        assert rocker_b.subdevice_index == 2
+
+    def test_same_device_symmetry(self):
+        base = DsUid.random()
+        a = base.derive_subdevice(1)
+        b = base.derive_subdevice(5)
+        assert a.same_device(b) == b.same_device(a)
+
+
+class TestDeviceBase:
+    """Tests for DsUid.device_base() — canonical device key."""
+
+    def test_device_base_index_zero(self):
+        d = DsUid.random(subdevice_index=7)
+        base = d.device_base()
+        assert base.subdevice_index == 0
+        assert d.same_device(base)
+
+    def test_device_base_already_zero(self):
+        d = DsUid.random(subdevice_index=0)
+        base = d.device_base()
+        assert base == d
+
+    def test_device_base_as_grouping_key(self):
+        """All siblings produce the same device_base() — usable as dict key."""
+        parent = DsUid.from_enocean("AABBCCDD")
+        siblings = [parent.derive_subdevice(i) for i in (0, 1, 2, 5)]
+        bases = {s.device_base() for s in siblings}
+        assert len(bases) == 1
+
+    def test_device_base_preserves_type(self):
+        d = DsUid.from_enocean("0512ABCD", subdevice_index=3)
+        base = d.device_base()
+        assert base.id_type == d.id_type
+
+
+# ---------------------------------------------------------------------------
 # Equality, hashing, ordering
 # ---------------------------------------------------------------------------
 

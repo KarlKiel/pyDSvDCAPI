@@ -925,11 +925,20 @@ class VdcHost:
     ) -> Optional[Dict[str, Any]]:
         """Return ``(properties_dict, entity)`` for the entity with
         the given dSUID string, or ``None`` if not found."""
+        # Normalise to upper-case — the vdSM may send lower-case hex.
+        dsuid_str = dsuid_str.upper()
         if dsuid_str == str(self._dsuid):
             return self.get_properties()
         vdc = self._vdcs.get(dsuid_str)
         if vdc is not None:
             return vdc.get_properties()
+        # Search for a vdSD across all vDCs.
+        for vdc in self._vdcs.values():
+            vdsd = vdc.get_vdsd_by_dsuid(
+                DsUid.from_string(dsuid_str)
+            )
+            if vdsd is not None:
+                return vdsd.get_properties()
         return None
 
     def _handle_get_property(self, msg: pb.Message) -> pb.Message:
@@ -950,16 +959,22 @@ class VdcHost:
             )
             return resp
 
+        query_names = [
+            q.name or "<wildcard>"
+            for q in msg.vdsm_request_get_property.query
+        ]
         logger.debug(
-            "getProperty for %s — %d query elements",
+            "getProperty for %s — %d query elements: %s",
             target_dsuid,
             len(msg.vdsm_request_get_property.query),
+            query_names,
         )
         return build_get_property_response(msg, props)
 
     def _handle_set_property(self, msg: pb.Message) -> pb.Message:
         """Handle a ``VDSM_REQUEST_SET_PROPERTY``."""
-        target_dsuid = msg.vdsm_request_set_property.dSUID
+        # Normalise to upper-case — the vdSM may send lower-case hex.
+        target_dsuid = msg.vdsm_request_set_property.dSUID.upper()
         incoming = elements_to_dict(
             msg.vdsm_request_set_property.properties
         )
@@ -979,6 +994,16 @@ class VdcHost:
             self._apply_vdc_set_property(vdc, incoming)
             resp.generic_response.code = pb.ERR_OK
             return resp
+
+        # Check for a vdSD across all vDCs.
+        for vdc in self._vdcs.values():
+            vdsd = vdc.get_vdsd_by_dsuid(
+                DsUid.from_string(target_dsuid)
+            )
+            if vdsd is not None:
+                self._apply_vdsd_set_property(vdsd, incoming)
+                resp.generic_response.code = pb.ERR_OK
+                return resp
 
         resp.generic_response.code = pb.ERR_NOT_FOUND
         resp.generic_response.description = (
@@ -1003,6 +1028,21 @@ class VdcHost:
             vdc.zone_id = int(incoming["zoneID"])
             logger.info(
                 "vDC '%s' zoneID set to %d", vdc.dsuid, vdc.zone_id
+            )
+
+    def _apply_vdsd_set_property(
+        self, vdsd: Any, incoming: Dict[str, Any]
+    ) -> None:
+        """Apply writable properties to a vdSD."""
+        if "name" in incoming:
+            vdsd.name = incoming["name"]
+            logger.info(
+                "vdSD '%s' name set to '%s'", vdsd.dsuid, vdsd.name
+            )
+        if "zoneID" in incoming:
+            vdsd.zone_id = int(incoming["zoneID"])
+            logger.info(
+                "vdSD '%s' zoneID set to %d", vdsd.dsuid, vdsd.zone_id
             )
 
     # ---- dunder -------------------------------------------------------

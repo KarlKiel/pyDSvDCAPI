@@ -82,6 +82,7 @@ from pyDSvDCAPI.enums import ColorGroup
 
 if TYPE_CHECKING:
     from pyDSvDCAPI.binary_input import BinaryInput
+    from pyDSvDCAPI.button_input import ButtonInput
     from pyDSvDCAPI.sensor_input import SensorInput
     from pyDSvDCAPI.session import VdcSession
     from pyDSvDCAPI.vdc import Vdc
@@ -244,6 +245,7 @@ class Vdsd:
 
         # --- components -----------------------------------------------
         self._binary_inputs: Dict[int, BinaryInput] = {}
+        self._button_inputs: Dict[int, ButtonInput] = {}
         self._sensor_inputs: Dict[int, SensorInput] = {}
 
         # --- runtime state --------------------------------------------
@@ -376,6 +378,54 @@ class Vdsd:
         """Look up a binary input by ``dsIndex``."""
         return self._binary_inputs.get(ds_index)
 
+    # ---- button input management -------------------------------------
+
+    @property
+    def button_inputs(self) -> Dict[int, "ButtonInput"]:
+        """All button inputs keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._button_inputs)
+
+    def add_button_input(self, btn: "ButtonInput") -> None:
+        """Register a :class:`ButtonInput` with this vdSD.
+
+        The input is indexed by its ``dsIndex``.  Adding an input
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the button input's owning vdSD is not this instance.
+        """
+        if btn.vdsd is not self:
+            raise ValueError(
+                f"ButtonInput belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {btn.vdsd.dsuid})"
+            )
+        self._button_inputs[btn.ds_index] = btn
+        logger.debug(
+            "Added ButtonInput[%d] '%s' to vdSD %s",
+            btn.ds_index, btn.name, self._dsuid,
+        )
+        # If already announced, start the session hook immediately.
+        if self._announced and self._session is not None:
+            btn.start_alive_timer(self._session)
+        self._schedule_auto_save_if_enabled()
+
+    def remove_button_input(self, ds_index: int) -> Optional["ButtonInput"]:
+        """Remove a button input by ``dsIndex``.
+
+        Returns the removed :class:`ButtonInput` or ``None``.
+        """
+        btn = self._button_inputs.pop(ds_index, None)
+        if btn is not None:
+            self._schedule_auto_save_if_enabled()
+        return btn
+
+    def get_button_input(self, ds_index: int) -> Optional["ButtonInput"]:
+        """Look up a button input by ``dsIndex``."""
+        return self._button_inputs.get(ds_index)
+
     # ---- sensor inputs -----------------------------------------------
 
     @property
@@ -473,6 +523,21 @@ class Vdsd:
         else:
             props["modelFeatures"] = {}
 
+        # Button input component properties (§4.2 / §4.1.2).
+        if self._button_inputs:
+            props["buttonInputDescriptions"] = {
+                str(btn.ds_index): btn.get_description_properties()
+                for btn in self._button_inputs.values()
+            }
+            props["buttonInputSettings"] = {
+                str(btn.ds_index): btn.get_settings_properties()
+                for btn in self._button_inputs.values()
+            }
+            props["buttonInputStates"] = {
+                str(btn.ds_index): btn.get_state_properties()
+                for btn in self._button_inputs.values()
+            }
+
         # Binary input component properties (§4.3 / §4.1.2).
         if self._binary_inputs:
             props["binaryInputDescriptions"] = {
@@ -547,6 +612,13 @@ class Vdsd:
         if self._model_features:
             node["modelFeatures"] = sorted(self._model_features)
 
+        # Button inputs (description + settings; state is volatile).
+        if self._button_inputs:
+            node["buttonInputs"] = [
+                btn.get_property_tree()
+                for btn in self._button_inputs.values()
+            ]
+
         # Binary inputs (description + settings; state is volatile).
         if self._binary_inputs:
             node["binaryInputs"] = [
@@ -616,6 +688,20 @@ class Vdsd:
             if "modelFeatures" in state:
                 self._model_features = set(state["modelFeatures"])
 
+            # Restore button inputs.
+            if "buttonInputs" in state:
+                from pyDSvDCAPI.button_input import ButtonInput
+                for btn_state in state["buttonInputs"]:
+                    idx = btn_state.get("dsIndex", 0)
+                    btn = self._button_inputs.get(idx)
+                    if btn is None:
+                        btn = ButtonInput(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._button_inputs[idx] = btn
+                    btn._apply_state(btn_state)
+
             # Restore binary inputs.
             if "binaryInputs" in state:
                 from pyDSvDCAPI.binary_input import BinaryInput
@@ -680,6 +766,9 @@ class Vdsd:
         if code == pb.ERR_OK:
             self._announced = True
             self._session = session
+            # Start session hooks for all button inputs.
+            for btn in self._button_inputs.values():
+                btn.start_alive_timer(session)
             # Start alive timers for all binary inputs.
             for bi in self._binary_inputs.values():
                 bi.start_alive_timer(session)
@@ -711,6 +800,9 @@ class Vdsd:
         await session.send_notification(msg)
         self._announced = False
         self._session = None
+        # Stop session hooks for all button inputs.
+        for btn in self._button_inputs.values():
+            btn.stop_alive_timer()
         # Stop alive timers for all binary inputs.
         for bi in self._binary_inputs.values():
             bi.stop_alive_timer()
@@ -725,6 +817,9 @@ class Vdsd:
         """Mark this vdSD as unannounced (e.g. on session disconnect)."""
         self._announced = False
         self._session = None
+        # Stop session hooks for all button inputs.
+        for btn in self._button_inputs.values():
+            btn.stop_alive_timer()
         # Stop alive timers for all binary inputs.
         for bi in self._binary_inputs.values():
             bi.stop_alive_timer()

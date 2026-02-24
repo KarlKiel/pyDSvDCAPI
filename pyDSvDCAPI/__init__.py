@@ -3,6 +3,7 @@
 __version__ = "0.1.0"
 
 from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
+    ActionMode,
     AirFlowDirection,
     BinaryInputType,
     BinaryInputUsage,
@@ -76,6 +77,14 @@ from pyDSvDCAPI.vdsd import (  # noqa: F401
 )
 
 from pyDSvDCAPI.binary_input import BinaryInput  # noqa: F401
+
+from pyDSvDCAPI.button_input import (  # noqa: F401
+    BUTTON_TYPE_ELEMENTS,
+    ButtonInput,
+    ClickDetector,
+    create_button_group,
+    get_required_elements,
+)
 
 from pyDSvDCAPI.sensor_input import SensorInput  # noqa: F401
 

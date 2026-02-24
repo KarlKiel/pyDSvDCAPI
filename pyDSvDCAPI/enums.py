@@ -548,6 +548,19 @@ class ButtonGroup(IntEnum):
     JOKER = 8
 
 
+@unique
+class ActionMode(IntEnum):
+    """Action mode for button direct scene calls (§4.2.3).
+
+    Determines how a directly-called scene is applied when a button
+    emits an ``actionId`` instead of a ``clickType``.
+    """
+
+    NORMAL = 0
+    FORCE = 1
+    UNDO = 2
+
+
 # ---------------------------------------------------------------------------
 #  Button input error  (vDC API properties §4.2.3)
 # ---------------------------------------------------------------------------

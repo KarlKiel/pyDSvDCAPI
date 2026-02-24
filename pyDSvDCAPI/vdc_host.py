@@ -1044,6 +1044,21 @@ class VdcHost:
             logger.info(
                 "vdSD '%s' zoneID set to %d", vdsd.dsuid, vdsd.zone_id
             )
+        # Button input settings (§4.2.2).
+        if "buttonInputSettings" in incoming:
+            btn_settings = incoming["buttonInputSettings"]
+            if isinstance(btn_settings, dict):
+                for idx_str, settings in btn_settings.items():
+                    if isinstance(settings, dict):
+                        idx = int(idx_str)
+                        btn = vdsd.get_button_input(idx)
+                        if btn is not None:
+                            btn.apply_settings(settings)
+                            logger.info(
+                                "vdSD '%s' buttonInputSettings[%d] "
+                                "updated",
+                                vdsd.dsuid, idx,
+                            )
         # Binary input settings (§4.3.2).
         if "binaryInputSettings" in incoming:
             bi_settings = incoming["binaryInputSettings"]

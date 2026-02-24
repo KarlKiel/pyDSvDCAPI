@@ -81,6 +81,7 @@ from pyDSvDCAPI.dsuid import DsUid
 from pyDSvDCAPI.enums import ColorGroup
 
 if TYPE_CHECKING:
+    from pyDSvDCAPI.binary_input import BinaryInput
     from pyDSvDCAPI.session import VdcSession
     from pyDSvDCAPI.vdc import Vdc
 
@@ -240,9 +241,13 @@ class Vdsd:
             set(model_features) if model_features else set()
         )
 
+        # --- components -----------------------------------------------
+        self._binary_inputs: Dict[int, BinaryInput] = {}
+
         # --- runtime state --------------------------------------------
         self._active: bool = True
         self._announced: bool = False
+        self._session: Optional[VdcSession] = None
 
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
@@ -321,6 +326,61 @@ class Vdsd:
         """Remove a model feature flag (no-op if absent)."""
         self._model_features.discard(feature)
 
+    # ---- binary input management -------------------------------------
+
+    @property
+    def binary_inputs(self) -> Dict[int, "BinaryInput"]:
+        """All binary inputs keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._binary_inputs)
+
+    def add_binary_input(self, bi: "BinaryInput") -> None:
+        """Register a :class:`BinaryInput` with this vdSD.
+
+        The input is indexed by its ``dsIndex``.  Adding an input
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the binary input's owning vdSD is not this instance.
+        """
+        if bi.vdsd is not self:
+            raise ValueError(
+                f"BinaryInput belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {bi.vdsd.dsuid})"
+            )
+        self._binary_inputs[bi.ds_index] = bi
+        logger.debug(
+            "Added BinaryInput[%d] '%s' to vdSD %s",
+            bi.ds_index, bi.name, self._dsuid,
+        )
+        # If already announced, start the alive timer immediately.
+        if self._announced and self._session is not None:
+            bi.start_alive_timer(self._session)
+        self._schedule_auto_save_if_enabled()
+
+    def remove_binary_input(self, ds_index: int) -> Optional["BinaryInput"]:
+        """Remove a binary input by ``dsIndex``.
+
+        Returns the removed :class:`BinaryInput` or ``None``.
+        """
+        bi = self._binary_inputs.pop(ds_index, None)
+        if bi is not None:
+            self._schedule_auto_save_if_enabled()
+        return bi
+
+    def get_binary_input(self, ds_index: int) -> Optional["BinaryInput"]:
+        """Look up a binary input by ``dsIndex``."""
+        return self._binary_inputs.get(ds_index)
+
+    def _schedule_auto_save_if_enabled(self) -> None:
+        """Trigger auto-save if enabled."""
+        if self._auto_save_enabled:
+            device = getattr(self, "_device", None)
+            if device is not None:
+                device._schedule_auto_save()
+
     # ---- property dict (for getProperty responses) -------------------
 
     def get_properties(self) -> Dict[str, Any]:
@@ -362,6 +422,22 @@ class Vdsd:
             }
         else:
             props["modelFeatures"] = {}
+
+        # Binary input component properties (§4.3 / §4.1.2).
+        if self._binary_inputs:
+            props["binaryInputDescriptions"] = {
+                str(bi.ds_index): bi.get_description_properties()
+                for bi in self._binary_inputs.values()
+            }
+            props["binaryInputSettings"] = {
+                str(bi.ds_index): bi.get_settings_properties()
+                for bi in self._binary_inputs.values()
+            }
+            props["binaryInputStates"] = {
+                str(bi.ds_index): bi.get_state_properties()
+                for bi in self._binary_inputs.values()
+            }
+
         return props
 
     # ---- property tree (for YAML persistence) ------------------------
@@ -405,6 +481,14 @@ class Vdsd:
         }
         if self._model_features:
             node["modelFeatures"] = sorted(self._model_features)
+
+        # Binary inputs (description + settings; state is volatile).
+        if self._binary_inputs:
+            node["binaryInputs"] = [
+                bi.get_property_tree()
+                for bi in self._binary_inputs.values()
+            ]
+
         return node
 
     # ---- state restoration -------------------------------------------
@@ -459,6 +543,20 @@ class Vdsd:
                 self.zone_id = int(state["zoneID"])
             if "modelFeatures" in state:
                 self._model_features = set(state["modelFeatures"])
+
+            # Restore binary inputs.
+            if "binaryInputs" in state:
+                from pyDSvDCAPI.binary_input import BinaryInput
+                for bi_state in state["binaryInputs"]:
+                    idx = bi_state.get("dsIndex", 0)
+                    bi = self._binary_inputs.get(idx)
+                    if bi is None:
+                        bi = BinaryInput(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._binary_inputs[idx] = bi
+                    bi._apply_state(bi_state)
         finally:
             self._auto_save_enabled = prev
 
@@ -495,6 +593,10 @@ class Vdsd:
         code = response.generic_response.code
         if code == pb.ERR_OK:
             self._announced = True
+            self._session = session
+            # Start alive timers for all binary inputs.
+            for bi in self._binary_inputs.values():
+                bi.start_alive_timer(session)
             logger.info("vdSD '%s' announced successfully", self.name)
             return True
 
@@ -519,6 +621,10 @@ class Vdsd:
         msg.vdc_send_vanish.dSUID = str(self._dsuid)
         await session.send_notification(msg)
         self._announced = False
+        self._session = None
+        # Stop alive timers for all binary inputs.
+        for bi in self._binary_inputs.values():
+            bi.stop_alive_timer()
         logger.info(
             "vdSD '%s' vanished (dSUID %s)", self.name, self._dsuid
         )
@@ -526,6 +632,10 @@ class Vdsd:
     def reset_announcement(self) -> None:
         """Mark this vdSD as unannounced (e.g. on session disconnect)."""
         self._announced = False
+        self._session = None
+        # Stop alive timers for all binary inputs.
+        for bi in self._binary_inputs.values():
+            bi.stop_alive_timer()
 
     # ---- dunder -------------------------------------------------------
 

@@ -1044,6 +1044,21 @@ class VdcHost:
             logger.info(
                 "vdSD '%s' zoneID set to %d", vdsd.dsuid, vdsd.zone_id
             )
+        # Binary input settings (§4.3.2).
+        if "binaryInputSettings" in incoming:
+            bi_settings = incoming["binaryInputSettings"]
+            if isinstance(bi_settings, dict):
+                for idx_str, settings in bi_settings.items():
+                    if isinstance(settings, dict):
+                        idx = int(idx_str)
+                        bi = vdsd.get_binary_input(idx)
+                        if bi is not None:
+                            bi.apply_settings(settings)
+                            logger.info(
+                                "vdSD '%s' binaryInputSettings[%d] "
+                                "updated",
+                                vdsd.dsuid, idx,
+                            )
 
     # ---- dunder -------------------------------------------------------
 

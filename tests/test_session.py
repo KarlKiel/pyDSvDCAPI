@@ -54,8 +54,8 @@ def _make_pair():
     vdc_writer = MockWriter(vdsm_reader)
     vdc_writer._extra["peername"] = ("127.0.0.1", 22222)
 
-    vdsm_conn = VdcConnection(vdsm_reader, vdsm_writer)
-    vdc_conn = VdcConnection(vdc_reader, vdc_writer)
+    vdsm_conn = VdcConnection(vdsm_reader, vdsm_writer)  # type: ignore[arg-type]
+    vdc_conn = VdcConnection(vdc_reader, vdc_writer)  # type: ignore[arg-type]
     return vdsm_conn, vdc_conn
 
 
@@ -128,6 +128,7 @@ class TestHello:
         task = asyncio.create_task(session.run())
 
         response = await vdsm.receive()
+        assert response is not None
         assert response.type == pb.VDC_RESPONSE_HELLO
         assert response.vdc_response_hello.dSUID == HOST_DSUID
         assert response.message_id == 1  # same as request
@@ -146,6 +147,7 @@ class TestHello:
         task = asyncio.create_task(session.run())
 
         response = await vdsm.receive()
+        assert response is not None
         assert response.type == pb.GENERIC_RESPONSE
         assert response.generic_response.code == pb.ERR_INCOMPATIBLE_API
 
@@ -170,6 +172,8 @@ class TestHello:
         # Read both responses.
         r1 = await vdsm.receive()
         r2 = await vdsm.receive()
+        assert r1 is not None
+        assert r2 is not None
         assert r1.type == pb.VDC_RESPONSE_HELLO
         assert r2.type == pb.VDC_RESPONSE_HELLO
         assert r2.message_id == 2
@@ -198,10 +202,12 @@ class TestPingPong:
 
         # Read hello response.
         hello_resp = await vdsm.receive()
+        assert hello_resp is not None
         assert hello_resp.type == pb.VDC_RESPONSE_HELLO
 
         # Read pong.
         pong = await vdsm.receive()
+        assert pong is not None
         assert pong.type == pb.VDC_SEND_PONG
         assert pong.vdc_send_pong.dSUID == HOST_DSUID
 
@@ -219,6 +225,7 @@ class TestPingPong:
         task = asyncio.create_task(session.run())
 
         error = await vdsm.receive()
+        assert error is not None
         assert error.type == pb.GENERIC_RESPONSE
         assert error.generic_response.code == pb.ERR_SERVICE_NOT_AVAILABLE
 
@@ -243,6 +250,7 @@ class TestPingPong:
         # 3 pongs.
         for _ in range(3):
             pong = await vdsm.receive()
+            assert pong is not None
             assert pong.type == pb.VDC_SEND_PONG
 
         await task
@@ -267,10 +275,12 @@ class TestBye:
 
         # Hello response.
         hello_resp = await vdsm.receive()
+        assert hello_resp is not None
         assert hello_resp.type == pb.VDC_RESPONSE_HELLO
 
         # Bye acknowledgement.
         bye_resp = await vdsm.receive()
+        assert bye_resp is not None
         assert bye_resp.type == pb.GENERIC_RESPONSE
         assert bye_resp.generic_response.code == pb.ERR_OK
         assert bye_resp.message_id == 5
@@ -342,6 +352,7 @@ class TestMessageCallback:
         await vdsm.receive()
         # Handler response.
         resp = await vdsm.receive()
+        assert resp is not None
         assert resp.type == pb.GENERIC_RESPONSE
         assert resp.message_id == 20
         assert resp.generic_response.code == pb.ERR_OK
@@ -397,6 +408,7 @@ class TestSendMessage:
         await session.send_message(announce)
 
         received = await vdsm.receive()
+        assert received is not None
         assert received.type == pb.VDC_SEND_ANNOUNCE_VDC
         assert received.vdc_send_announce_vdc.dSUID == "C" * 34
 
@@ -552,6 +564,7 @@ class TestSendRequest:
             )
             # Read what was sent.
             received = await vdsm.receive()
+            assert received is not None
             assert received.type == pb.VDC_SEND_ANNOUNCE_VDC
             assert received.message_id == 2  # last_known was 1 → next == 2
 
@@ -587,6 +600,7 @@ class TestSendRequest:
                 session.send_request(msg, timeout=2.0)
             )
             received = await vdsm.receive()
+            assert received is not None
             ids_seen.append(received.message_id)
             await vdsm.send(_generic_response(received.message_id))
             await req_task
@@ -618,6 +632,7 @@ class TestSendRequest:
             session.send_request(announce, timeout=2.0)
         )
         received = await vdsm.receive()
+        assert received is not None
         assert received.message_id == 51
 
         await vdsm.send(_generic_response(51))
@@ -704,6 +719,7 @@ class TestSendNotification:
         await session.send_notification(push)
 
         received = await vdsm.receive()
+        assert received is not None
         assert received.type == pb.VDC_SEND_PUSH_PROPERTY
         assert received.message_id == 0
 
@@ -745,6 +761,7 @@ class TestResponseCorrelation:
             session.send_request(announce, timeout=2.0)
         )
         outgoing = await vdsm.receive()
+        assert outgoing is not None
 
         # Simulate vdSM responding.
         await vdsm.send(_generic_response(outgoing.message_id, pb.ERR_OK))
@@ -774,6 +791,7 @@ class TestResponseCorrelation:
             session.send_request(announce, timeout=2.0)
         )
         outgoing = await vdsm.receive()
+        assert outgoing is not None
         await vdsm.send(
             _generic_response(outgoing.message_id, pb.ERR_INSUFFICIENT_STORAGE)
         )

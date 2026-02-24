@@ -98,6 +98,7 @@ class TestTcpHello:
             await conn.send(_hello_msg())
 
             response = await conn.receive()
+            assert response is not None
             assert response.type == pb.VDC_RESPONSE_HELLO
             assert response.vdc_response_hello.dSUID == str(host.dsuid)
 
@@ -146,6 +147,7 @@ class TestTcpPingPong:
             target = str(host.dsuid)
             await conn.send(_ping_msg(target))
             pong = await conn.receive()
+            assert pong is not None
             assert pong.type == pb.VDC_SEND_PONG
             assert pong.vdc_send_pong.dSUID == target
 
@@ -173,6 +175,7 @@ class TestTcpBye:
 
             await conn.send(_bye_msg(msg_id=99))
             resp = await conn.receive()
+            assert resp is not None
             assert resp.type == pb.GENERIC_RESPONSE
             assert resp.generic_response.code == pb.ERR_OK
             assert resp.message_id == 99
@@ -220,6 +223,7 @@ class TestTcpCallback:
             await conn.send(sp)
 
             resp = await conn.receive()
+            assert resp is not None
             assert resp.type == pb.GENERIC_RESPONSE
             assert resp.message_id == 42
             assert pb.VDSM_REQUEST_SET_PROPERTY in received
@@ -256,6 +260,7 @@ class TestConnectionReplacement:
 
             await conn2.send(_hello_msg(dsuid="1" * 34, msg_id=2))
             resp = await conn2.receive()
+            assert resp is not None
             assert resp.type == pb.VDC_RESPONSE_HELLO
 
             await asyncio.sleep(0.05)

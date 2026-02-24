@@ -54,8 +54,8 @@ def _make_pair():
     server_writer = MockWriter(client_reader)
     server_writer._extra["peername"] = ("127.0.0.1", 54321)
 
-    client_conn = VdcConnection(client_reader, client_writer)
-    server_conn = VdcConnection(server_reader, server_writer)
+    client_conn = VdcConnection(client_reader, client_writer)  # type: ignore[arg-type]
+    server_conn = VdcConnection(server_reader, server_writer)  # type: ignore[arg-type]
     return client_conn, server_conn
 
 
@@ -78,6 +78,7 @@ class TestFramingRoundtrip:
         await client.send(msg)
         received = await server.receive()
 
+        assert received is not None
         assert received.type == pb.VDSM_REQUEST_HELLO
         assert received.message_id == 1
         assert received.vdsm_request_hello.dSUID == "A" * 34
@@ -95,6 +96,7 @@ class TestFramingRoundtrip:
         await client.send(msg)
         received = await server.receive()
 
+        assert received is not None
         assert received.type == pb.GENERIC_RESPONSE
         assert received.generic_response.code == pb.ERR_OK
 
@@ -110,6 +112,7 @@ class TestFramingRoundtrip:
 
         # Server reads ...
         received_ping = await server.receive()
+        assert received_ping is not None
         assert received_ping.type == pb.VDSM_SEND_PING
 
         # Server → Client
@@ -119,6 +122,7 @@ class TestFramingRoundtrip:
         await server.send(pong)
 
         received_pong = await client.receive()
+        assert received_pong is not None
         assert received_pong.type == pb.VDC_SEND_PONG
 
     @pytest.mark.asyncio
@@ -134,6 +138,7 @@ class TestFramingRoundtrip:
 
         for i in range(5):
             received = await server.receive()
+            assert received is not None
             assert received.message_id == i
 
 

@@ -95,6 +95,7 @@ class TestAutoSaveDebounce:
         path = tmp_path / "host.yaml"
         host = VdcHost(mac=TEST_MAC, state_path=path)
 
+        assert host._store is not None
         with patch.object(host._store, "save", wraps=host._store.save) as mock_save:
             host.name = "A"
             host.name = "B"

@@ -83,6 +83,7 @@ from pyDSvDCAPI.enums import ColorGroup
 if TYPE_CHECKING:
     from pyDSvDCAPI.binary_input import BinaryInput
     from pyDSvDCAPI.button_input import ButtonInput
+    from pyDSvDCAPI.output import Output
     from pyDSvDCAPI.sensor_input import SensorInput
     from pyDSvDCAPI.session import VdcSession
     from pyDSvDCAPI.vdc import Vdc
@@ -247,6 +248,7 @@ class Vdsd:
         self._binary_inputs: Dict[int, BinaryInput] = {}
         self._button_inputs: Dict[int, ButtonInput] = {}
         self._sensor_inputs: Dict[int, SensorInput] = {}
+        self._output: Optional[Output] = None
 
         # --- runtime state --------------------------------------------
         self._active: bool = True
@@ -474,6 +476,50 @@ class Vdsd:
         """Look up a sensor input by ``dsIndex``."""
         return self._sensor_inputs.get(ds_index)
 
+    # ---- output management ---------------------------------------------
+
+    @property
+    def output(self) -> Optional["Output"]:
+        """The output component, or ``None``."""
+        return self._output
+
+    def set_output(self, output: "Output") -> None:
+        """Set the single output for this vdSD.
+
+        Replaces any previously set output.
+
+        Raises
+        ------
+        ValueError
+            If the output's owning vdSD is not this instance.
+        """
+        if output.vdsd is not self:
+            raise ValueError(
+                f"Output belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {output.vdsd.dsuid})"
+            )
+        self._output = output
+        logger.debug(
+            "Set Output '%s' on vdSD %s",
+            output.name, self._dsuid,
+        )
+        # If already announced, start the session hook immediately.
+        if self._announced and self._session is not None:
+            output.start_session(self._session)
+        self._schedule_auto_save_if_enabled()
+
+    def remove_output(self) -> Optional["Output"]:
+        """Remove the output from this vdSD.
+
+        Returns the removed :class:`Output` or ``None``.
+        """
+        output = self._output
+        if output is not None:
+            output.stop_session()
+            self._output = None
+            self._schedule_auto_save_if_enabled()
+        return output
+
     def _schedule_auto_save_if_enabled(self) -> None:
         """Trigger auto-save if enabled."""
         if self._auto_save_enabled:
@@ -568,6 +614,29 @@ class Vdsd:
                 for si in self._sensor_inputs.values()
             }
 
+        # Output component properties (§4.8).
+        if self._output is not None:
+            props["outputDescription"] = (
+                self._output.get_description_properties()
+            )
+            props["outputSettings"] = (
+                self._output.get_settings_properties()
+            )
+            props["outputState"] = (
+                self._output.get_state_properties()
+            )
+
+            # Channel properties (§4.9 / §4.1.3).
+            ch_desc = self._output.get_channel_descriptions()
+            if ch_desc:
+                props["channelDescriptions"] = ch_desc
+                props["channelSettings"] = (
+                    self._output.get_channel_settings()
+                )
+                props["channelStates"] = (
+                    self._output.get_channel_states()
+                )
+
         return props
 
     # ---- property tree (for YAML persistence) ------------------------
@@ -632,6 +701,10 @@ class Vdsd:
                 si.get_property_tree()
                 for si in self._sensor_inputs.values()
             ]
+
+        # Output (description + settings; state is volatile).
+        if self._output is not None:
+            node["output"] = self._output.get_property_tree()
 
         return node
 
@@ -729,6 +802,14 @@ class Vdsd:
                         )
                         self._sensor_inputs[idx] = si
                     si._apply_state(si_state)
+
+            # Restore output.
+            if "output" in state:
+                from pyDSvDCAPI.output import Output
+                out_state = state["output"]
+                if self._output is None:
+                    self._output = Output(vdsd=self)
+                self._output._apply_state(out_state)
         finally:
             self._auto_save_enabled = prev
 
@@ -775,6 +856,9 @@ class Vdsd:
             # Start alive timers for all sensor inputs.
             for si in self._sensor_inputs.values():
                 si.start_alive_timer(session)
+            # Start session for output.
+            if self._output is not None:
+                self._output.start_session(session)
             logger.info("vdSD '%s' announced successfully", self.name)
             return True
 
@@ -809,6 +893,9 @@ class Vdsd:
         # Stop alive timers for all sensor inputs.
         for si in self._sensor_inputs.values():
             si.stop_alive_timer()
+        # Stop session for output.
+        if self._output is not None:
+            self._output.stop_session()
         logger.info(
             "vdSD '%s' vanished (dSUID %s)", self.name, self._dsuid
         )
@@ -826,6 +913,9 @@ class Vdsd:
         # Stop alive timers for all sensor inputs.
         for si in self._sensor_inputs.values():
             si.stop_alive_timer()
+        # Stop session for output.
+        if self._output is not None:
+            self._output.stop_session()
 
     # ---- dunder -------------------------------------------------------
 

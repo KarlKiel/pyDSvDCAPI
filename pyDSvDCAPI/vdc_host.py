@@ -915,6 +915,10 @@ class VdcHost:
         if msg_type == pb.VDSM_REQUEST_SET_PROPERTY:
             return self._handle_set_property(msg)
 
+        if msg_type == pb.VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE:
+            await self._handle_set_output_channel_value(session, msg)
+            return None
+
         # Delegate to the user callback.
         if self._on_message is not None:
             return await self._on_message(session, msg)
@@ -1089,6 +1093,114 @@ class VdcHost:
                                 "updated",
                                 vdsd.dsuid, idx,
                             )
+        # Output settings (§4.8.2).
+        if "outputSettings" in incoming:
+            out_settings = incoming["outputSettings"]
+            if isinstance(out_settings, dict):
+                output = getattr(vdsd, "output", None)
+                if output is not None:
+                    output.apply_settings(out_settings)
+                    logger.info(
+                        "vdSD '%s' outputSettings updated",
+                        vdsd.dsuid,
+                    )
+        # Output state (§4.8.3) — only localPriority is writable.
+        if "outputState" in incoming:
+            out_state = incoming["outputState"]
+            if isinstance(out_state, dict):
+                output = getattr(vdsd, "output", None)
+                if output is not None:
+                    output.apply_state(out_state)
+                    logger.info(
+                        "vdSD '%s' outputState updated",
+                        vdsd.dsuid,
+                    )
+
+    # ---- setOutputChannelValue notification handler ------------------
+
+    def _find_vdsd_by_dsuid(
+        self, dsuid_str: str
+    ) -> Optional[Any]:
+        """Find a vdSD across all vDCs by dSUID string."""
+        dsuid_str = dsuid_str.upper()
+        for vdc in self._vdcs.values():
+            vdsd = vdc.get_vdsd_by_dsuid(
+                DsUid.from_string(dsuid_str)
+            )
+            if vdsd is not None:
+                return vdsd
+        return None
+
+    async def _handle_set_output_channel_value(
+        self,
+        session: VdcSession,
+        msg: pb.Message,
+    ) -> None:
+        """Handle ``VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE``.
+
+        Buffers the channel value on the target output; when
+        ``apply_now`` is ``True`` (or omitted), applies all buffered
+        values via the output's ``on_channel_applied`` callback.
+        """
+        notif = msg.vdsm_send_output_channel_value
+
+        # Resolve the target vdSD(s).
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "setOutputChannelValue: vdSD %s not found",
+                    dsuid_str,
+                )
+                continue
+
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                logger.warning(
+                    "setOutputChannelValue: vdSD %s has no output",
+                    dsuid_str,
+                )
+                continue
+
+            # Find the channel — prefer channelId (string name),
+            # fall back to channel (int type index).
+            channel_obj = None
+            if notif.channelId:
+                # Look up by channel name.
+                for ch in output.channels.values():
+                    if ch.name == notif.channelId:
+                        channel_obj = ch
+                        break
+            if channel_obj is None and notif.channel:
+                # Look up by channel type (int).
+                from pyDSvDCAPI.enums import OutputChannelType
+                try:
+                    ct = OutputChannelType(int(notif.channel))
+                    channel_obj = output.get_channel_by_type(ct)
+                except (ValueError, KeyError):
+                    pass
+            if channel_obj is None:
+                logger.warning(
+                    "setOutputChannelValue: channel '%s'/%d not "
+                    "found on vdSD %s",
+                    notif.channelId, notif.channel, dsuid_str,
+                )
+                continue
+
+            # Buffer the value on the output.
+            output.buffer_channel_value(channel_obj, notif.value)
+
+            logger.debug(
+                "setOutputChannelValue: %s ch=%s val=%s "
+                "apply_now=%s",
+                dsuid_str, channel_obj.name, notif.value,
+                notif.apply_now,
+            )
+
+            # apply_now: True (or default=True when omitted) triggers
+            # hardware apply of all pending updates.
+            if notif.apply_now:
+                await output.apply_pending_channels()
 
     # ---- dunder -------------------------------------------------------
 

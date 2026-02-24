@@ -88,6 +88,18 @@ from pyDSvDCAPI.button_input import (  # noqa: F401
 
 from pyDSvDCAPI.sensor_input import SensorInput  # noqa: F401
 
+from pyDSvDCAPI.output import (  # noqa: F401
+    FUNCTION_CHANNELS,
+    Output,
+)
+
+from pyDSvDCAPI.output_channel import (  # noqa: F401
+    CHANNEL_SPECS,
+    ChannelSpec,
+    OutputChannel,
+    get_channel_spec,
+)
+
 from pyDSvDCAPI.property_handling import (  # noqa: F401
     build_get_property_response,
     dict_to_elements,

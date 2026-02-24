@@ -216,17 +216,21 @@ class TestTcpCallback:
             await conn.send(_hello_msg())
             await conn.receive()  # hello response
 
-            sp = pb.Message()
-            sp.type = pb.VDSM_REQUEST_SET_PROPERTY
-            sp.message_id = 42
-            sp.vdsm_request_set_property.dSUID = str(host.dsuid)
-            await conn.send(sp)
+            # Use a generic request — a message type that is NOT
+            # intercepted internally by VdcHost (GET_PROPERTY and
+            # SET_PROPERTY are now handled by the property dispatch).
+            gr = pb.Message()
+            gr.type = pb.VDSM_REQUEST_GENERIC_REQUEST
+            gr.message_id = 42
+            gr.vdsm_request_generic_request.dSUID = str(host.dsuid)
+            gr.vdsm_request_generic_request.methodname = "testMethod"
+            await conn.send(gr)
 
             resp = await conn.receive()
             assert resp is not None
             assert resp.type == pb.GENERIC_RESPONSE
             assert resp.message_id == 42
-            assert pb.VDSM_REQUEST_SET_PROPERTY in received
+            assert pb.VDSM_REQUEST_GENERIC_REQUEST in received
 
             await conn.close()
             await asyncio.sleep(0.05)

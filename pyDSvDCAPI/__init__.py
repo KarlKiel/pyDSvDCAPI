@@ -62,3 +62,16 @@ from pyDSvDCAPI.vdc_host import (  # noqa: F401
     DEFAULT_VDC_PORT,
     VdcHost,
 )
+
+from pyDSvDCAPI.vdc import (  # noqa: F401
+    ENTITY_TYPE_VDC,
+    Vdc,
+    VdcCapabilities,
+)
+
+from pyDSvDCAPI.property_handling import (  # noqa: F401
+    build_get_property_response,
+    dict_to_elements,
+    elements_to_dict,
+    match_query,
+)

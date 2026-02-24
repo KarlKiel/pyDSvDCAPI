@@ -82,6 +82,7 @@ from pyDSvDCAPI.enums import ColorGroup
 
 if TYPE_CHECKING:
     from pyDSvDCAPI.binary_input import BinaryInput
+    from pyDSvDCAPI.sensor_input import SensorInput
     from pyDSvDCAPI.session import VdcSession
     from pyDSvDCAPI.vdc import Vdc
 
@@ -243,6 +244,7 @@ class Vdsd:
 
         # --- components -----------------------------------------------
         self._binary_inputs: Dict[int, BinaryInput] = {}
+        self._sensor_inputs: Dict[int, SensorInput] = {}
 
         # --- runtime state --------------------------------------------
         self._active: bool = True
@@ -374,6 +376,54 @@ class Vdsd:
         """Look up a binary input by ``dsIndex``."""
         return self._binary_inputs.get(ds_index)
 
+    # ---- sensor inputs -----------------------------------------------
+
+    @property
+    def sensor_inputs(self) -> Dict[int, "SensorInput"]:
+        """All sensor inputs keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._sensor_inputs)
+
+    def add_sensor_input(self, si: "SensorInput") -> None:
+        """Register a :class:`SensorInput` with this vdSD.
+
+        The input is indexed by its ``dsIndex``.  Adding an input
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the sensor input's owning vdSD is not this instance.
+        """
+        if si.vdsd is not self:
+            raise ValueError(
+                f"SensorInput belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {si.vdsd.dsuid})"
+            )
+        self._sensor_inputs[si.ds_index] = si
+        logger.debug(
+            "Added SensorInput[%d] '%s' to vdSD %s",
+            si.ds_index, si.name, self._dsuid,
+        )
+        # If already announced, start the alive timer immediately.
+        if self._announced and self._session is not None:
+            si.start_alive_timer(self._session)
+        self._schedule_auto_save_if_enabled()
+
+    def remove_sensor_input(self, ds_index: int) -> Optional["SensorInput"]:
+        """Remove a sensor input by ``dsIndex``.
+
+        Returns the removed :class:`SensorInput` or ``None``.
+        """
+        si = self._sensor_inputs.pop(ds_index, None)
+        if si is not None:
+            self._schedule_auto_save_if_enabled()
+        return si
+
+    def get_sensor_input(self, ds_index: int) -> Optional["SensorInput"]:
+        """Look up a sensor input by ``dsIndex``."""
+        return self._sensor_inputs.get(ds_index)
+
     def _schedule_auto_save_if_enabled(self) -> None:
         """Trigger auto-save if enabled."""
         if self._auto_save_enabled:
@@ -438,6 +488,21 @@ class Vdsd:
                 for bi in self._binary_inputs.values()
             }
 
+        # Sensor input component properties (§4.3 / §4.1.3).
+        if self._sensor_inputs:
+            props["sensorDescriptions"] = {
+                str(si.ds_index): si.get_description_properties()
+                for si in self._sensor_inputs.values()
+            }
+            props["sensorSettings"] = {
+                str(si.ds_index): si.get_settings_properties()
+                for si in self._sensor_inputs.values()
+            }
+            props["sensorStates"] = {
+                str(si.ds_index): si.get_state_properties()
+                for si in self._sensor_inputs.values()
+            }
+
         return props
 
     # ---- property tree (for YAML persistence) ------------------------
@@ -487,6 +552,13 @@ class Vdsd:
             node["binaryInputs"] = [
                 bi.get_property_tree()
                 for bi in self._binary_inputs.values()
+            ]
+
+        # Sensor inputs (description + settings; state is volatile).
+        if self._sensor_inputs:
+            node["sensorInputs"] = [
+                si.get_property_tree()
+                for si in self._sensor_inputs.values()
             ]
 
         return node
@@ -557,6 +629,20 @@ class Vdsd:
                         )
                         self._binary_inputs[idx] = bi
                     bi._apply_state(bi_state)
+
+            # Restore sensor inputs.
+            if "sensorInputs" in state:
+                from pyDSvDCAPI.sensor_input import SensorInput
+                for si_state in state["sensorInputs"]:
+                    idx = si_state.get("dsIndex", 0)
+                    si = self._sensor_inputs.get(idx)
+                    if si is None:
+                        si = SensorInput(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._sensor_inputs[idx] = si
+                    si._apply_state(si_state)
         finally:
             self._auto_save_enabled = prev
 
@@ -597,6 +683,9 @@ class Vdsd:
             # Start alive timers for all binary inputs.
             for bi in self._binary_inputs.values():
                 bi.start_alive_timer(session)
+            # Start alive timers for all sensor inputs.
+            for si in self._sensor_inputs.values():
+                si.start_alive_timer(session)
             logger.info("vdSD '%s' announced successfully", self.name)
             return True
 
@@ -625,6 +714,9 @@ class Vdsd:
         # Stop alive timers for all binary inputs.
         for bi in self._binary_inputs.values():
             bi.stop_alive_timer()
+        # Stop alive timers for all sensor inputs.
+        for si in self._sensor_inputs.values():
+            si.stop_alive_timer()
         logger.info(
             "vdSD '%s' vanished (dSUID %s)", self.name, self._dsuid
         )
@@ -636,6 +728,9 @@ class Vdsd:
         # Stop alive timers for all binary inputs.
         for bi in self._binary_inputs.values():
             bi.stop_alive_timer()
+        # Stop alive timers for all sensor inputs.
+        for si in self._sensor_inputs.values():
+            si.stop_alive_timer()
 
     # ---- dunder -------------------------------------------------------
 

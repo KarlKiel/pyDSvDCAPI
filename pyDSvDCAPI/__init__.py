@@ -77,6 +77,8 @@ from pyDSvDCAPI.vdsd import (  # noqa: F401
 
 from pyDSvDCAPI.binary_input import BinaryInput  # noqa: F401
 
+from pyDSvDCAPI.sensor_input import SensorInput  # noqa: F401
+
 from pyDSvDCAPI.property_handling import (  # noqa: F401
     build_get_property_response,
     dict_to_elements,

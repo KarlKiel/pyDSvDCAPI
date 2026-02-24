@@ -1059,6 +1059,21 @@ class VdcHost:
                                 "updated",
                                 vdsd.dsuid, idx,
                             )
+        # Sensor input settings (§4.3.2).
+        if "sensorSettings" in incoming:
+            si_settings = incoming["sensorSettings"]
+            if isinstance(si_settings, dict):
+                for idx_str, settings in si_settings.items():
+                    if isinstance(settings, dict):
+                        idx = int(idx_str)
+                        si = vdsd.get_sensor_input(idx)
+                        if si is not None:
+                            si.apply_settings(settings)
+                            logger.info(
+                                "vdSD '%s' sensorSettings[%d] "
+                                "updated",
+                                vdsd.dsuid, idx,
+                            )
 
     # ---- dunder -------------------------------------------------------
 

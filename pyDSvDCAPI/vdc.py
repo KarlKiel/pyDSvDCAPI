@@ -46,7 +46,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Optional
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
 from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
@@ -54,6 +54,7 @@ from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
 if TYPE_CHECKING:
     from pyDSvDCAPI.session import VdcSession
     from pyDSvDCAPI.vdc_host import VdcHost
+    from pyDSvDCAPI.vdsd import Device, Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -259,6 +260,9 @@ class Vdc:
         )
         self.zone_id: int = zone_id
 
+        # --- device registry ------------------------------------------
+        self._devices: Dict[str, Device] = {}  # keyed by base dSUID str
+
         # --- runtime state --------------------------------------------
         self._active: bool = True
         self._announced: bool = False
@@ -344,6 +348,81 @@ class Vdc:
         """``True`` if this vDC has been announced to the vdSM."""
         return self._announced
 
+    # ---- device management -------------------------------------------
+
+    def add_device(self, device: Device) -> None:
+        """Register a :class:`Device` with this vDC.
+
+        The device is stored keyed by its base dSUID string.
+        Triggers auto-save on the host.
+        """
+        key = str(device.dsuid)
+        self._devices[key] = device
+        logger.info(
+            "Registered device %s with vDC '%s' (%d vdSD(s))",
+            key, self.name, len(device.vdsds),
+        )
+        if getattr(self, "_auto_save_enabled", False):
+            self._host._schedule_auto_save()
+
+    def remove_device(self, dsuid: DsUid) -> Optional[Device]:
+        """Remove a device by its base dSUID.
+
+        Returns the removed :class:`Device` or ``None``.
+        """
+        key = str(dsuid.device_base())
+        device = self._devices.pop(key, None)
+        if device is not None:
+            logger.info(
+                "Removed device %s from vDC '%s'", key, self.name
+            )
+            if getattr(self, "_auto_save_enabled", False):
+                self._host._schedule_auto_save()
+        return device
+
+    def get_device(self, dsuid: DsUid) -> Optional[Device]:
+        """Look up a device by its base dSUID."""
+        return self._devices.get(str(dsuid.device_base()))
+
+    def get_vdsd_by_dsuid(self, dsuid: DsUid) -> Optional[Vdsd]:
+        """Look up a vdSD across all devices by its full dSUID."""
+        for device in self._devices.values():
+            vdsd = device.get_vdsd_by_dsuid(dsuid)
+            if vdsd is not None:
+                return vdsd
+        return None
+
+    @property
+    def devices(self) -> Dict[str, Device]:
+        """A read-only view of all registered devices."""
+        return dict(self._devices)
+
+    async def announce_devices(self, session: VdcSession) -> int:
+        """Announce all devices (and their vdSDs) to the vdSM.
+
+        This should be called after the vDC itself has been announced.
+
+        Returns the total number of vdSDs successfully announced.
+        """
+        total = 0
+        for device in self._devices.values():
+            if not device.is_announced:
+                try:
+                    total += await device.announce(session)
+                except Exception:  # noqa: BLE001
+                    logger.exception(
+                        "Failed to announce device %s", device.dsuid
+                    )
+        logger.info(
+            "vDC '%s': announced %d vdSD(s) across %d device(s)",
+            self.name, total, len(self._devices),
+        )
+        return total
+
+    def _schedule_auto_save(self) -> None:
+        """Delegate auto-save scheduling to the owning host."""
+        self._host._schedule_auto_save()
+
     # ---- common-property dict ----------------------------------------
 
     def get_properties(self) -> Dict[str, Any]:
@@ -418,6 +497,11 @@ class Vdc:
             "capabilities": self._capabilities.to_dict(),
             "zoneID": self.zone_id,
         }
+        if self._devices:
+            node["devices"] = [
+                dev.get_property_tree()
+                for dev in self._devices.values()
+            ]
         return node
 
     # ---- state restoration -------------------------------------------
@@ -469,6 +553,25 @@ class Vdc:
                 )
             if "zoneID" in state:
                 self.zone_id = state["zoneID"]
+
+            # Restore devices from persisted state.
+            if "devices" in state:
+                from pyDSvDCAPI.vdsd import Device
+                for dev_state in state["devices"]:
+                    base_dsuid_str = dev_state.get("baseDsUID")
+                    if base_dsuid_str:
+                        base = DsUid.from_string(base_dsuid_str)
+                        device = self._devices.get(
+                            str(base.device_base())
+                        )
+                        if device is None:
+                            device = Device(
+                                vdc=self, dsuid=base
+                            )
+                            self._devices[
+                                str(device.dsuid)
+                            ] = device
+                        device._apply_state(dev_state)
         finally:
             self._auto_save_enabled = prev
 
@@ -530,10 +633,13 @@ class Vdc:
     def reset_announcement(self) -> None:
         """Reset the announcement state (e.g. on session disconnect).
 
-        Called by the host when the session ends to mark all vDCs as
-        unannounced so they will be re-announced on the next session.
+        Called by the host when the session ends to mark all vDCs
+        and their devices as unannounced so they will be re-announced
+        on the next session.
         """
         self._announced = False
+        for device in self._devices.values():
+            device.reset_announcement()
 
     # ---- dunder -------------------------------------------------------
 

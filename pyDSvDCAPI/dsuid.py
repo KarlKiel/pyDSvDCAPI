@@ -532,6 +532,10 @@ class DsUid:
         """Return a new dSUID that shares the base identity but uses a
         different sub-device index (byte 17).
 
+        This is the primary mechanism for representing **multiple vdSDs
+        within a single physical device** (see vDC API §5.2).  All
+        derived siblings share bytes 0-15 and differ only in byte 16.
+
         Parameters
         ----------
         subdevice_index:
@@ -542,6 +546,31 @@ class DsUid:
         obj._raw[UUID_BYTES] = subdevice_index & 0xFF
         obj._id_type = self._id_type
         return obj
+
+    def same_device(self, other: DsUid) -> bool:
+        """Check whether *self* and *other* belong to the same hardware.
+
+        Two dSUIDs belong to the same physical device when their first
+        16 bytes (the base identity) are identical — only the sub-device
+        enumeration byte (byte 17) may differ.  See vDC API §5.2.
+
+        Parameters
+        ----------
+        other:
+            Another :class:`DsUid` to compare against.
+        """
+        return self._raw[:UUID_BYTES] == other._raw[:UUID_BYTES]
+
+    def device_base(self) -> DsUid:
+        """Return the canonical *device-level* dSUID (sub-device index 0).
+
+        This is useful as a dictionary/grouping key when you need to
+        collect all vdSDs that belong to the same physical device.
+
+        If *self* already has ``subdevice_index == 0`` a copy is still
+        returned (dSUIDs are value objects).
+        """
+        return self.derive_subdevice(0)
 
     # ---- properties -------------------------------------------------------
 

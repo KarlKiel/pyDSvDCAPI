@@ -69,6 +69,12 @@ from pyDSvDCAPI.vdc import (  # noqa: F401
     VdcCapabilities,
 )
 
+from pyDSvDCAPI.vdsd import (  # noqa: F401
+    ENTITY_TYPE_VDSD,
+    Device,
+    Vdsd,
+)
+
 from pyDSvDCAPI.property_handling import (  # noqa: F401
     build_get_property_response,
     dict_to_elements,

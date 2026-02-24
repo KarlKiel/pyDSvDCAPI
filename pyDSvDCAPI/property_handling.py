@@ -24,7 +24,7 @@ Python → protobuf type mapping:
   Python    PropertyValue field
   ========  ======================
   ``str``   ``v_string``
-  ``int``   ``v_int64``
+  ``int``   ``v_uint64`` (≥ 0) or ``v_int64`` (< 0)
   ``bool``  ``v_bool``
   ``float`` ``v_double``
   ``bytes`` ``v_bytes``
@@ -62,7 +62,13 @@ def _to_property_value(value: Any) -> Optional[pb.PropertyValue]:
     if isinstance(value, bool):
         pv.v_bool = value
     elif isinstance(value, int):
-        pv.v_int64 = value
+        # The vdSM expects unsigned integers (v_uint64) for most
+        # numeric properties (zoneID, primaryGroup, etc.).  Use
+        # v_int64 only for genuinely negative values.
+        if value < 0:
+            pv.v_int64 = value
+        else:
+            pv.v_uint64 = value
     elif isinstance(value, float):
         pv.v_double = value
     elif isinstance(value, str):
@@ -204,6 +210,15 @@ def build_get_property_response(
     response = pb.Message()
     response.type = pb.VDC_RESPONSE_GET_PROPERTY
     response.message_id = request.message_id
+
+    # Ensure the sub-message is always present in the serialized
+    # output, even when *matched* is empty.  Without this the
+    # vdSM receives a packet whose type says "getProperty
+    # response" but the actual ``vdc_response_get_property``
+    # field is missing, causing an "ERR_MISSING_SUBMESSAGE"
+    # and aborting the device registration.
+    response.vdc_response_get_property.SetInParent()
+
     for elem in matched:
         response.vdc_response_get_property.properties.append(elem)
 

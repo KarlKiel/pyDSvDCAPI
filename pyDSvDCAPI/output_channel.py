@@ -1,0 +1,576 @@
+"""Output channel component for vdSD devices.
+
+An :class:`OutputChannel` represents one controllable dimension of a
+device's single :class:`~pyDSvDCAPI.output.Output` — for example
+*brightness*, *hue*, *shade position* or *heating power*.
+
+Each output can own **one or more** channels.  The set of channels
+depends on the output's :pyattr:`~pyDSvDCAPI.output.Output.function`:
+
+======================  ===================================================
+Output function          Required channels
+======================  ===================================================
+ON_OFF (0)               brightness
+DIMMER (1)               brightness
+POSITIONAL (2)           device-dependent (shades, valves, …) — add manually
+DIMMER_COLOR_TEMP (3)    brightness, colortemp
+FULL_COLOR_DIMMER (4)    brightness, hue, saturation, colortemp, cieX, cieY
+BIPOLAR (5)              device-dependent — add manually
+INTERNALLY_CTRL (6)      device-dependent — add manually
+======================  ===================================================
+
+For functions 0/1/3/4 the :class:`~pyDSvDCAPI.output.Output` auto-
+creates the required channels.  For 2/5/6 the integrator must add them
+via :meth:`Output.add_channel`.
+
+Bidirectional value flow
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Channel values can change from **two** directions:
+
+1. **vdSM → device** (``setOutputChannelValue`` notification, §7.3.9):
+   The vdSM sets a value that the vDC must apply to the hardware.
+   This is always forwarded to the device immediately via the
+   ``on_channel_applied`` callback on the :class:`Output`.
+
+2. **device → vdSM** (local change → ``pushProperty``, §7.1.3):
+   When the device-side code calls :meth:`OutputChannel.update_value`,
+   the new value is stored and — if ``pushChanges`` is set on the
+   owning output — a ``VDC_SEND_PUSH_PROPERTY`` is sent to the vdSM.
+
+``apply_now`` buffering (§7.3.9)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the vdSM sends multiple ``setOutputChannelValue`` notifications
+for the same device, only the last one (with ``apply_now=True`` or
+omitted) triggers the hardware callback.  Previous values are buffered
+on the channel until that point.
+
+Age tracking
+~~~~~~~~~~~~
+
+Like sensors, each channel tracks the *age* of its value — i.e. how
+many seconds ago the value was last applied / confirmed by the device.
+``age`` is ``None`` when a new value has been set by the vdSM but not
+yet confirmed by the hardware.
+
+Property exposure
+~~~~~~~~~~~~~~~~~
+
+Three IndexedPropertyElement lists at the vdSD level (§4.1.3):
+
+* **channelDescriptions** — read-only metadata (name, channelType,
+  dsIndex, min, max, resolution).
+* **channelSettings** — currently empty (no per-channel settings
+  defined in the spec).
+* **channelStates** — ``value`` and ``age``.  Must **not** be written
+  via ``setProperty``; use ``setOutputChannelValue`` instead.
+
+Persistence
+~~~~~~~~~~~
+
+Channel *descriptions* are persisted (which channels exist, their
+types and ds-indices).  Channel *values* (state) are volatile and NOT
+persisted.
+"""
+
+from __future__ import annotations
+
+import logging
+import time
+from dataclasses import dataclass
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Optional,
+    Union,
+)
+
+from pyDSvDCAPI.enums import OutputChannelType
+
+if TYPE_CHECKING:
+    from pyDSvDCAPI.output import Output
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Channel type metadata
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ChannelSpec:
+    """Metadata for a standard output channel type.
+
+    Attributes
+    ----------
+    name:
+        Protocol-level channel name (e.g. ``"brightness"``).
+    min_value:
+        Minimum value in the channel's unit.
+    max_value:
+        Maximum value in the channel's unit.
+    resolution:
+        Default resolution (smallest distinguishable step).
+    """
+
+    name: str
+    min_value: float
+    max_value: float
+    resolution: float
+
+
+#: Metadata table for all standard channel types (vDC API §4.9.4).
+#: IDs follow the ``OutputChannelType`` enum.
+CHANNEL_SPECS: Dict[OutputChannelType, ChannelSpec] = {
+    # -- Light channels ------------------------------------------------
+    OutputChannelType.BRIGHTNESS: ChannelSpec(
+        name="brightness", min_value=0, max_value=100, resolution=100 / 255
+    ),
+    OutputChannelType.HUE: ChannelSpec(
+        name="hue", min_value=0, max_value=360, resolution=360 / 255
+    ),
+    OutputChannelType.SATURATION: ChannelSpec(
+        name="saturation", min_value=0, max_value=100, resolution=100 / 255
+    ),
+    OutputChannelType.COLOR_TEMPERATURE: ChannelSpec(
+        name="colortemp", min_value=100, max_value=1000, resolution=900 / 255
+    ),
+    OutputChannelType.CIE_X: ChannelSpec(
+        name="x", min_value=0, max_value=10000, resolution=10000 / 255
+    ),
+    OutputChannelType.CIE_Y: ChannelSpec(
+        name="y", min_value=0, max_value=10000, resolution=10000 / 255
+    ),
+    # -- Shade channels ------------------------------------------------
+    OutputChannelType.SHADE_POSITION_OUTSIDE: ChannelSpec(
+        name="shadePositionOutside", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.SHADE_POSITION_INDOOR: ChannelSpec(
+        name="shadePositionIndoor", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.SHADE_OPENING_ANGLE_OUTSIDE: ChannelSpec(
+        name="shadeOpeningAngleOutside", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.SHADE_OPENING_ANGLE_INDOOR: ChannelSpec(
+        name="shadeOpeningAngleIndoor", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.TRANSPARENCY: ChannelSpec(
+        name="transparency", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    # -- Climate channels ----------------------------------------------
+    OutputChannelType.HEATING_POWER: ChannelSpec(
+        name="heatingPower", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.HEATING_VALVE: ChannelSpec(
+        name="heatingValue", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.COOLING_CAPACITY: ChannelSpec(
+        name="coolingCapacity", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.COOLING_VALVE: ChannelSpec(
+        name="coolingValue", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AIR_FLOW_INTENSITY: ChannelSpec(
+        name="airFlowIntensity", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AIR_FLOW_DIRECTION: ChannelSpec(
+        name="airFlowDirection", min_value=0, max_value=2,
+        resolution=1,
+    ),
+    OutputChannelType.AIR_FLAP_POSITION: ChannelSpec(
+        name="airFlapPosition", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AIR_LOUVER_POSITION: ChannelSpec(
+        name="airLouverPosition", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AIR_LOUVER_AUTO: ChannelSpec(
+        name="airLouverAuto", min_value=0, max_value=1, resolution=1,
+    ),
+    OutputChannelType.AIR_FLOW_AUTO: ChannelSpec(
+        name="airFlowAuto", min_value=0, max_value=1, resolution=1,
+    ),
+    # -- Audio channels ------------------------------------------------
+    OutputChannelType.AUDIO_VOLUME: ChannelSpec(
+        name="audioVolume", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AUDIO_BASS: ChannelSpec(
+        name="audioBass", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AUDIO_TREBLE: ChannelSpec(
+        name="audioTreble", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.AUDIO_BALANCE: ChannelSpec(
+        name="audioBalance", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    # -- Misc channels -------------------------------------------------
+    OutputChannelType.WATER_TEMPERATURE: ChannelSpec(
+        name="waterTemperature", min_value=0, max_value=150,
+        resolution=150 / 255,
+    ),
+    OutputChannelType.WATER_FLOW: ChannelSpec(
+        name="waterFlow", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.POWER_STATE: ChannelSpec(
+        name="powerState", min_value=0, max_value=3, resolution=1,
+    ),
+    OutputChannelType.WIND_SPEED_RATE: ChannelSpec(
+        name="windSpeedRate", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+    OutputChannelType.POWER_LEVEL: ChannelSpec(
+        name="powerLevel", min_value=0, max_value=100,
+        resolution=100 / 255,
+    ),
+}
+
+
+def get_channel_spec(
+    channel_type: Union[OutputChannelType, int],
+) -> Optional[ChannelSpec]:
+    """Look up the :class:`ChannelSpec` for a standard channel type.
+
+    Returns ``None`` for unknown / device-specific channel types
+    (ID ≥ 192).
+    """
+    if isinstance(channel_type, int) and not isinstance(
+        channel_type, OutputChannelType
+    ):
+        try:
+            channel_type = OutputChannelType(channel_type)
+        except ValueError:
+            return None
+    return CHANNEL_SPECS.get(channel_type)
+
+
+# ---------------------------------------------------------------------------
+# OutputChannel
+# ---------------------------------------------------------------------------
+
+
+class OutputChannel:
+    """One controllable dimension of a device output.
+
+    Parameters
+    ----------
+    output:
+        The owning :class:`~pyDSvDCAPI.output.Output`.
+    channel_type:
+        Standard channel type (``OutputChannelType`` or int).
+    ds_index:
+        Zero-based ``dsIndex`` within the device.  Index 0 is the
+        default / primary channel.
+    name:
+        Human-readable label.  Defaults to the spec name for the
+        channel type, or ``"channel_<dsIndex>"`` for custom types.
+    min_value:
+        Override the standard minimum value.
+    max_value:
+        Override the standard maximum value.
+    resolution:
+        Override the standard resolution.
+    """
+
+    def __init__(
+        self,
+        *,
+        output: Output,
+        channel_type: Union[OutputChannelType, int],
+        ds_index: int = 0,
+        name: Optional[str] = None,
+        min_value: Optional[float] = None,
+        max_value: Optional[float] = None,
+        resolution: Optional[float] = None,
+    ) -> None:
+        self._output: Output = output
+
+        # Store as enum if possible, otherwise keep raw int.
+        try:
+            self._channel_type: Union[OutputChannelType, int] = (
+                OutputChannelType(int(channel_type))
+            )
+        except ValueError:
+            self._channel_type = int(channel_type)
+
+        self._ds_index: int = ds_index
+
+        # Resolve spec defaults.
+        spec = CHANNEL_SPECS.get(
+            OutputChannelType(int(channel_type))
+            if isinstance(self._channel_type, OutputChannelType)
+            else None  # type: ignore[arg-type]
+        )
+        if name is not None:
+            self._name = name
+        elif spec is not None:
+            self._name = spec.name
+        else:
+            self._name = f"channel_{ds_index}"
+
+        # Ensure float so protobuf serialises as v_double (not v_uint64).
+        self._min_value: float = float(
+            min_value if min_value is not None
+            else (spec.min_value if spec else 0.0)
+        )
+        self._max_value: float = float(
+            max_value if max_value is not None
+            else (spec.max_value if spec else 100.0)
+        )
+        self._resolution: float = float(
+            resolution if resolution is not None
+            else (spec.resolution if spec else 1.0)
+        )
+
+        # ---- volatile state (NOT persisted) --------------------------
+        self._value: Optional[float] = None
+        #: Monotonic timestamp of last confirmed hardware apply.
+        self._last_update: Optional[float] = None
+
+    # ==================================================================
+    # Read-only description accessors
+    # ==================================================================
+
+    @property
+    def output(self) -> Output:
+        """The owning :class:`Output`."""
+        return self._output
+
+    @property
+    def channel_type(self) -> Union[OutputChannelType, int]:
+        """Channel type ID (enum or raw int for device-specific)."""
+        return self._channel_type
+
+    @property
+    def ds_index(self) -> int:
+        """Zero-based ``dsIndex``."""
+        return self._ds_index
+
+    @property
+    def name(self) -> str:
+        """Human-readable label."""
+        return self._name
+
+    @property
+    def min_value(self) -> float:
+        """Minimum value."""
+        return self._min_value
+
+    @property
+    def max_value(self) -> float:
+        """Maximum value."""
+        return self._max_value
+
+    @property
+    def resolution(self) -> float:
+        """Resolution (smallest distinguishable step)."""
+        return self._resolution
+
+    # ==================================================================
+    # Volatile state accessors
+    # ==================================================================
+
+    @property
+    def value(self) -> Optional[float]:
+        """Current channel value (``None`` = unknown)."""
+        return self._value
+
+    @property
+    def age(self) -> Optional[float]:
+        """Seconds since the value was last confirmed by hardware.
+
+        ``None`` means the value was never confirmed (e.g. a new value
+        was set by the vdSM but not yet applied to hardware).
+        """
+        if self._last_update is None:
+            return None
+        return time.monotonic() - self._last_update
+
+    # ==================================================================
+    # Value mutation — device side (local change)
+    # ==================================================================
+
+    async def update_value(
+        self,
+        value: float,
+    ) -> None:
+        """Set the channel value from the **device** side.
+
+        Stores the value and marks the hardware-confirmation timestamp.
+        If the owning output has ``pushChanges`` enabled and an active
+        session, pushes the new value to the vdSM via
+        ``VDC_SEND_PUSH_PROPERTY``.
+
+        Parameters
+        ----------
+        value:
+            New channel value in the channel's native unit/range.
+        """
+        self._value = self._clamp(value)
+        self._last_update = time.monotonic()
+        logger.debug(
+            "OutputChannel[%d] '%s' device-side update → %s",
+            self._ds_index, self._name, self._value,
+        )
+        # Push to vdSM if output.pushChanges is set.
+        if self._output.push_changes:
+            await self._output._push_channel_state(self)
+
+    # ==================================================================
+    # Value mutation — vdSM side (setOutputChannelValue)
+    # ==================================================================
+
+    def set_value_from_vdsm(self, value: float) -> None:
+        """Buffer a value received from the vdSM.
+
+        Called by the ``VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE``
+        handler.  The value is stored, but the hardware-confirmation
+        timestamp is cleared (``age`` becomes ``None``) until the
+        device confirms.
+
+        The device callback is **not** invoked here — it is triggered
+        by :meth:`Output.apply_pending_channels` when ``apply_now``
+        is ``True``.
+        """
+        self._value = self._clamp(value)
+        # Age = NULL until the device confirms the value.
+        self._last_update = None
+        logger.debug(
+            "OutputChannel[%d] '%s' vdSM-side set → %s (pending)",
+            self._ds_index, self._name, self._value,
+        )
+
+    def confirm_applied(self) -> None:
+        """Mark the current value as applied to the hardware.
+
+        Called after the device callback has successfully applied the
+        value.  This sets the hardware-confirmation timestamp so
+        ``age`` starts counting from now.
+        """
+        self._last_update = time.monotonic()
+        logger.debug(
+            "OutputChannel[%d] '%s' confirmed applied (value=%s)",
+            self._ds_index, self._name, self._value,
+        )
+
+    # ==================================================================
+    # Property dicts (for getProperty responses)
+    # ==================================================================
+
+    def get_description_properties(self) -> Dict[str, Any]:
+        """Return the ``channelDescriptions[N]`` property dict.
+
+        Keys match the vDC API property names (§4.9.1).
+        """
+        return {
+            "name": self._name,
+            "channelType": int(self._channel_type),
+            "dsIndex": self._ds_index,
+            "min": self._min_value,
+            "max": self._max_value,
+            "resolution": self._resolution,
+        }
+
+    def get_settings_properties(self) -> Dict[str, Any]:
+        """Return the ``channelSettings[N]`` property dict.
+
+        Currently no per-channel settings are defined (§4.9.2).
+        """
+        return {}
+
+    def get_state_properties(self) -> Dict[str, Any]:
+        """Return the ``channelStates[N]`` property dict.
+
+        Keys match the vDC API property names (§4.9.3).
+        """
+        return {
+            "value": self._value,    # may be None (NULL)
+            "age": self.age,         # may be None (NULL)
+        }
+
+    # ==================================================================
+    # Persistence
+    # ==================================================================
+
+    def get_property_tree(self) -> Dict[str, Any]:
+        """Return a serialisable dict for YAML persistence.
+
+        Only description metadata is persisted.  Channel value/age
+        are volatile.
+        """
+        return {
+            "channelType": int(self._channel_type),
+            "dsIndex": self._ds_index,
+            "name": self._name,
+            "min": self._min_value,
+            "max": self._max_value,
+            "resolution": self._resolution,
+        }
+
+    def _apply_state(self, state: Dict[str, Any]) -> None:
+        """Restore from a persisted property tree dict.
+
+        Only description fields; value/age remain at defaults.
+        """
+        if "channelType" in state:
+            raw = int(state["channelType"])
+            try:
+                self._channel_type = OutputChannelType(raw)
+            except ValueError:
+                self._channel_type = raw
+            # Re-resolve name from spec if not explicitly stored.
+            spec = CHANNEL_SPECS.get(
+                self._channel_type
+                if isinstance(self._channel_type, OutputChannelType)
+                else None  # type: ignore[arg-type]
+            )
+            if spec and "name" not in state:
+                self._name = spec.name
+        if "dsIndex" in state:
+            self._ds_index = int(state["dsIndex"])
+        if "name" in state:
+            self._name = state["name"]
+        if "min" in state:
+            self._min_value = float(state["min"])
+        if "max" in state:
+            self._max_value = float(state["max"])
+        if "resolution" in state:
+            self._resolution = float(state["resolution"])
+
+    # ==================================================================
+    # Helpers
+    # ==================================================================
+
+    def _clamp(self, value: float) -> float:
+        """Clamp *value* to [min_value, max_value]."""
+        return max(self._min_value, min(self._max_value, value))
+
+    def __repr__(self) -> str:
+        type_name = (
+            self._channel_type.name
+            if isinstance(self._channel_type, OutputChannelType)
+            else str(self._channel_type)
+        )
+        return (
+            f"OutputChannel(type={type_name}, "
+            f"dsIndex={self._ds_index}, "
+            f"value={self._value!r})"
+        )

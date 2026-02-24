@@ -43,7 +43,12 @@ from pyDSvDCAPI import genericVDC_pb2 as pb
 from pyDSvDCAPI.connection import VdcConnection
 from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
 from pyDSvDCAPI.persistence import PropertyStore
+from pyDSvDCAPI.property_handling import (
+    build_get_property_response,
+    elements_to_dict,
+)
 from pyDSvDCAPI.session import MessageCallback, SessionState, VdcSession
+from pyDSvDCAPI.vdc import Vdc, VdcCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -293,9 +298,24 @@ class VdcHost:
         self._session_task: Optional[asyncio.Task] = None
         self._on_message: Optional[MessageCallback] = None
 
+        # --- vDC registry ---------------------------------------------
+        self._vdcs: Dict[str, Vdc] = {}  # keyed by dSUID string
+
         # --- auto-save ------------------------------------------------
         self._save_timer: Optional[threading.Timer] = None
         self._auto_save_enabled: bool = self._store is not None
+
+        # --- restore vDCs from persisted state ------------------------
+        if host_state.get("vdcs"):
+            for vdc_state in host_state["vdcs"]:
+                impl_id = vdc_state.get("implementationId")
+                if impl_id:
+                    vdc = Vdc(
+                        host=self,
+                        implementation_id=impl_id,
+                    )
+                    vdc._apply_state(vdc_state)
+                    self._vdcs[str(vdc.dsuid)] = vdc
 
         # Schedule an initial save so that the constructed state
         # (which may include defaults and derived values) is persisted.
@@ -393,6 +413,92 @@ class VdcHost:
             "active": self._active,
         }
 
+    # ---- vDC management -----------------------------------------------
+
+    def add_vdc(self, vdc: Vdc) -> None:
+        """Register a :class:`Vdc` with this host.
+
+        The vDC is stored in an internal registry keyed by its dSUID.
+        Adding a vDC with a dSUID that already exists replaces the
+        previous entry.  If auto-save is enabled, a save is scheduled.
+
+        Parameters
+        ----------
+        vdc:
+            The :class:`Vdc` instance to register.
+        """
+        key = str(vdc.dsuid)
+        self._vdcs[key] = vdc
+        logger.info("Registered vDC '%s' (dSUID %s)", vdc.name, key)
+        if self._auto_save_enabled:
+            self._schedule_auto_save()
+
+    def remove_vdc(self, dsuid: DsUid) -> Optional[Vdc]:
+        """Remove a registered vDC by its dSUID.
+
+        Returns the removed :class:`Vdc` or ``None`` if no vDC with
+        the given dSUID was registered.
+        """
+        key = str(dsuid)
+        vdc = self._vdcs.pop(key, None)
+        if vdc is not None:
+            logger.info("Removed vDC '%s' (dSUID %s)", vdc.name, key)
+            if self._auto_save_enabled:
+                self._schedule_auto_save()
+        return vdc
+
+    def get_vdc(self, dsuid: DsUid) -> Optional[Vdc]:
+        """Look up a registered vDC by its dSUID.
+
+        Returns ``None`` if no vDC is registered with that dSUID.
+        """
+        return self._vdcs.get(str(dsuid))
+
+    @property
+    def vdcs(self) -> Dict[str, Vdc]:
+        """A read-only view of all registered vDCs (keyed by dSUID)."""
+        return dict(self._vdcs)
+
+    async def announce_vdcs(self) -> int:
+        """Announce all registered vDCs to the connected vdSM.
+
+        This should be called after the session hello handshake
+        completes, before announcing any devices.
+
+        Returns
+        -------
+        int
+            The number of vDCs successfully announced.
+
+        Raises
+        ------
+        ConnectionError
+            If there is no active session.
+        """
+        session = self._session
+        if session is None or not session.is_active:
+            raise ConnectionError(
+                "Cannot announce vDCs — no active session"
+            )
+
+        announced_count = 0
+        for vdc in self._vdcs.values():
+            try:
+                success = await vdc.announce(session)
+                if success:
+                    announced_count += 1
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to announce vDC '%s'", vdc.name
+                )
+
+        logger.info(
+            "Announced %d/%d vDCs",
+            announced_count,
+            len(self._vdcs),
+        )
+        return announced_count
+
     # ---- property tree (for persistence) -----------------------------
 
     def get_property_tree(self) -> Dict[str, Any]:
@@ -406,10 +512,11 @@ class VdcHost:
               port: 8444
               name: "..."
               model: "..."
-              ...                   # remaining common properties
-
-        This tree is designed to be extended with ``vdcs`` and
-        ``devices`` sub-trees in later iterations.
+              ...
+              vdcs:
+                - dSUID: "..."
+                  implementationId: "x-company-light"
+                  ...
         """
         host_node: Dict[str, Any] = {
             "dSUID": str(self._dsuid),
@@ -429,6 +536,11 @@ class VdcHost:
             "configURL": self.config_url,
             "deviceIconName": self.device_icon_name,
         }
+
+        if self._vdcs:
+            host_node["vdcs"] = [
+                vdc.get_property_tree() for vdc in self._vdcs.values()
+            ]
 
         return {"vdcHost": host_node}
 
@@ -518,7 +630,11 @@ class VdcHost:
         return True
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
-        """Apply a persisted state dict to this host's properties."""
+        """Apply a persisted state dict to this host's properties.
+
+        Also restores vDC properties when ``vdcs`` entries match
+        already-registered vDCs by dSUID or implementationId.
+        """
         if "dSUID" in state:
             self._dsuid = DsUid.from_string(state["dSUID"])
         if "mac" in state:
@@ -551,6 +667,35 @@ class VdcHost:
             self.config_url = state["configURL"]
         if "deviceIconName" in state:
             self.device_icon_name = state["deviceIconName"]
+
+        # Restore vDC properties from persisted state.
+        if "vdcs" in state:
+            for vdc_state in state["vdcs"]:
+                vdc = self._find_vdc_for_state(vdc_state)
+                if vdc is not None:
+                    vdc._apply_state(vdc_state)
+
+    def _find_vdc_for_state(
+        self, vdc_state: Dict[str, Any]
+    ) -> Optional[Vdc]:
+        """Find a registered vDC matching *vdc_state*.
+
+        Matches by dSUID first, then by ``implementationId`` as a
+        fallback.
+        """
+        # Match by dSUID.
+        dsuid_str = vdc_state.get("dSUID")
+        if dsuid_str and dsuid_str in self._vdcs:
+            return self._vdcs[dsuid_str]
+
+        # Fallback — match by implementationId.
+        impl_id = vdc_state.get("implementationId")
+        if impl_id:
+            for vdc in self._vdcs.values():
+                if vdc.implementation_id == impl_id:
+                    return vdc
+
+        return None
 
     # ---- DNS-SD announcement -----------------------------------------
 
@@ -715,7 +860,7 @@ class VdcHost:
         session = VdcSession(
             connection=conn,
             host_dsuid=str(self._dsuid),
-            on_message=self._on_message,
+            on_message=self._dispatch_message,
         )
         self._session = session
 
@@ -733,6 +878,10 @@ class VdcHost:
             if self._session is session:
                 self._session = None
                 self._session_task = None
+            # Reset announcement state for all vDCs so they will be
+            # re-announced on the next session.
+            for vdc in self._vdcs.values():
+                vdc.reset_announcement()
             logger.info("Session with %s cleaned up", session.vdsm_dsuid)
 
     async def _close_session(self) -> None:
@@ -743,6 +892,118 @@ class VdcHost:
             await self._session.close()
             self._session = None
             self._session_task = None
+
+    # ---- property access (internal message handling) -----------------
+
+    async def _dispatch_message(
+        self,
+        session: VdcSession,
+        msg: pb.Message,
+    ) -> Optional[pb.Message]:
+        """Internal message handler installed on every session.
+
+        Intercepts ``VDSM_REQUEST_GET_PROPERTY`` and
+        ``VDSM_REQUEST_SET_PROPERTY`` and routes them to the
+        addressed entity.  All other messages are forwarded to the
+        user-supplied ``on_message`` callback.
+        """
+        msg_type = msg.type
+
+        if msg_type == pb.VDSM_REQUEST_GET_PROPERTY:
+            return self._handle_get_property(msg)
+
+        if msg_type == pb.VDSM_REQUEST_SET_PROPERTY:
+            return self._handle_set_property(msg)
+
+        # Delegate to the user callback.
+        if self._on_message is not None:
+            return await self._on_message(session, msg)
+        return None
+
+    def _resolve_entity(
+        self, dsuid_str: str
+    ) -> Optional[Dict[str, Any]]:
+        """Return ``(properties_dict, entity)`` for the entity with
+        the given dSUID string, or ``None`` if not found."""
+        if dsuid_str == str(self._dsuid):
+            return self.get_properties()
+        vdc = self._vdcs.get(dsuid_str)
+        if vdc is not None:
+            return vdc.get_properties()
+        return None
+
+    def _handle_get_property(self, msg: pb.Message) -> pb.Message:
+        """Handle a ``VDSM_REQUEST_GET_PROPERTY``."""
+        target_dsuid = msg.vdsm_request_get_property.dSUID
+        props = self._resolve_entity(target_dsuid)
+
+        if props is None:
+            logger.debug(
+                "getProperty for unknown dSUID %s", target_dsuid
+            )
+            resp = pb.Message()
+            resp.type = pb.GENERIC_RESPONSE
+            resp.message_id = msg.message_id
+            resp.generic_response.code = pb.ERR_NOT_FOUND
+            resp.generic_response.description = (
+                f"Entity {target_dsuid} not found"
+            )
+            return resp
+
+        logger.debug(
+            "getProperty for %s — %d query elements",
+            target_dsuid,
+            len(msg.vdsm_request_get_property.query),
+        )
+        return build_get_property_response(msg, props)
+
+    def _handle_set_property(self, msg: pb.Message) -> pb.Message:
+        """Handle a ``VDSM_REQUEST_SET_PROPERTY``."""
+        target_dsuid = msg.vdsm_request_set_property.dSUID
+        incoming = elements_to_dict(
+            msg.vdsm_request_set_property.properties
+        )
+
+        resp = pb.Message()
+        resp.type = pb.GENERIC_RESPONSE
+        resp.message_id = msg.message_id
+
+        # Resolve the entity.
+        if target_dsuid == str(self._dsuid):
+            self._apply_set_property(incoming)
+            resp.generic_response.code = pb.ERR_OK
+            return resp
+
+        vdc = self._vdcs.get(target_dsuid)
+        if vdc is not None:
+            self._apply_vdc_set_property(vdc, incoming)
+            resp.generic_response.code = pb.ERR_OK
+            return resp
+
+        resp.generic_response.code = pb.ERR_NOT_FOUND
+        resp.generic_response.description = (
+            f"Entity {target_dsuid} not found"
+        )
+        return resp
+
+    def _apply_set_property(self, incoming: Dict[str, Any]) -> None:
+        """Apply writable properties to this host."""
+        if "name" in incoming:
+            self.name = incoming["name"]
+            logger.info("Host name set to '%s'", self.name)
+
+    def _apply_vdc_set_property(
+        self, vdc: Vdc, incoming: Dict[str, Any]
+    ) -> None:
+        """Apply writable properties to a vDC."""
+        if "name" in incoming:
+            vdc.name = incoming["name"]
+            logger.info("vDC '%s' name set to '%s'", vdc.dsuid, vdc.name)
+        if "zoneID" in incoming:
+            vdc.zone_id = int(incoming["zoneID"])
+            logger.info(
+                "vDC '%s' zoneID set to %d", vdc.dsuid, vdc.zone_id
+            )
 
     # ---- dunder -------------------------------------------------------
 

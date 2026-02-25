@@ -637,6 +637,12 @@ class Vdsd:
                     self._output.get_channel_states()
                 )
 
+            # Scene properties (§4.1.4 / §4.10).
+            if ch_desc:
+                props["scenes"] = (
+                    self._output.get_scene_properties()
+                )
+
         return props
 
     # ---- property tree (for YAML persistence) ------------------------

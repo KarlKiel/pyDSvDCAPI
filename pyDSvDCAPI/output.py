@@ -88,6 +88,8 @@ from pyDSvDCAPI.enums import (
     OutputFunction,
     OutputMode,
     OutputUsage,
+    SceneEffect,
+    SceneNumber,
 )
 from pyDSvDCAPI.output_channel import OutputChannel
 from pyDSvDCAPI.property_handling import dict_to_elements
@@ -134,6 +136,130 @@ FUNCTION_CHANNELS: Dict[OutputFunction, List[OutputChannelType]] = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Scene default helpers
+# ---------------------------------------------------------------------------
+
+#: Scene numbers that represent an "off" action (primary channel → min).
+_OFF_SCENES: frozenset = frozenset({
+    SceneNumber.PRESET_0,
+    SceneNumber.AREA_1_OFF,
+    SceneNumber.AREA_2_OFF,
+    SceneNumber.AREA_3_OFF,
+    SceneNumber.AREA_4_OFF,
+    SceneNumber.PRESET_10,
+    SceneNumber.PRESET_20,
+    SceneNumber.PRESET_30,
+    SceneNumber.PRESET_40,
+    SceneNumber.AUTO_OFF,
+    SceneNumber.DEVICE_OFF,
+    SceneNumber.DEEP_OFF,
+    SceneNumber.AUTO_STANDBY,
+    SceneNumber.STANDBY,
+    SceneNumber.ABSENT,
+})
+
+#: Scene numbers that represent an "on" action (primary channel → max).
+_ON_SCENES: frozenset = frozenset({
+    SceneNumber.PRESET_1,
+    SceneNumber.AREA_1_ON,
+    SceneNumber.AREA_2_ON,
+    SceneNumber.AREA_3_ON,
+    SceneNumber.AREA_4_ON,
+    SceneNumber.PRESET_11,
+    SceneNumber.PRESET_21,
+    SceneNumber.PRESET_31,
+    SceneNumber.PRESET_41,
+    SceneNumber.MAXIMUM,
+    SceneNumber.DEVICE_ON,
+    SceneNumber.PRESENT,
+    SceneNumber.WAKEUP,
+})
+
+#: Scenes that are "action" commands and do **not** have stored values
+#: (stepping, stop, dimming, panic, alarm, …).  These are excluded
+#: from the default scene table.
+_NON_VALUE_SCENES: frozenset = frozenset({
+    SceneNumber.AREA_STEPPING_CONTINUE,
+    SceneNumber.DECREMENT,
+    SceneNumber.INCREMENT,
+    SceneNumber.STOP,
+    SceneNumber.AREA_1_DEC,
+    SceneNumber.AREA_1_INC,
+    SceneNumber.AREA_1_STOP,
+    SceneNumber.AREA_2_DEC,
+    SceneNumber.AREA_2_INC,
+    SceneNumber.AREA_2_STOP,
+    SceneNumber.AREA_3_DEC,
+    SceneNumber.AREA_3_INC,
+    SceneNumber.AREA_3_STOP,
+    SceneNumber.AREA_4_DEC,
+    SceneNumber.AREA_4_INC,
+    SceneNumber.AREA_4_STOP,
+    SceneNumber.IMPULSE,
+    SceneNumber.MINIMUM,
+})
+
+
+def _build_default_scene_entry(
+    scene_nr: int,
+    channels: Dict[int, "OutputChannel"],
+) -> Dict[str, Any]:
+    """Build the default scene entry for *scene_nr*.
+
+    Returns a dict with the structure:
+        {
+            "dontCare": bool,
+            "ignoreLocalPriority": bool,
+            "effect": int,
+            "channels": {
+                <dsIndex>: {
+                    "value": float | None,
+                    "dontCare": bool,
+                    "automatic": bool,
+                },
+                …
+            },
+        }
+    """
+    is_off = scene_nr in _OFF_SCENES
+    is_on = scene_nr in _ON_SCENES
+    has_default = is_off or is_on
+
+    # Determine scene-global defaults.
+    scene_dont_care = not has_default
+    ignore_local_priority = scene_nr in {
+        SceneNumber.PANIC,
+        SceneNumber.FIRE,
+        SceneNumber.ALARM_1,
+        SceneNumber.ALARM_2,
+        SceneNumber.ALARM_3,
+        SceneNumber.ALARM_4,
+    }
+    effect = int(SceneEffect.SMOOTH) if has_default else int(SceneEffect.NONE)
+
+    ch_entries: Dict[int, Dict[str, Any]] = {}
+    for idx, ch in channels.items():
+        if is_off:
+            val: Optional[float] = ch.min_value
+        elif is_on:
+            val = ch.max_value
+        else:
+            val = ch.min_value
+        ch_entries[idx] = {
+            "value": val,
+            "dontCare": not has_default,
+            "automatic": False,
+        }
+
+    return {
+        "dontCare": scene_dont_care,
+        "ignoreLocalPriority": ignore_local_priority,
+        "effect": effect,
+        "channels": ch_entries,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -286,6 +412,16 @@ class Output:
 
         # Auto-create channels from function.
         self._auto_create_channels()
+
+        # ---- scene table ---------------------------------------------
+        #: Scene table: maps scene number (int) → scene entry dict.
+        self._scenes: Dict[int, Dict[str, Any]] = {}
+        #: Last called scene number (for undo matching).
+        self._last_called_scene: Optional[int] = None
+        #: Snapshot of channel values before last call_scene (for undo).
+        self._undo_snapshot: Optional[Dict[int, float]] = None
+        # Populate default scenes.
+        self._init_default_scenes()
 
     # ==================================================================
     # Read-only description accessors
@@ -596,6 +732,7 @@ class Output:
             resolution=resolution,
         )
         self._channels[ds_index] = channel
+        self._ensure_scene_channel_entries()
         logger.debug(
             "Added channel %s (dsIndex=%d) to output '%s'",
             channel.name, ds_index, self._name,
@@ -611,6 +748,9 @@ class Output:
         ch = self._channels.pop(ds_index, None)
         if ch is not None:
             self._pending_channel_updates.pop(ds_index, None)
+            # Remove channel from all scene entries.
+            for entry in self._scenes.values():
+                entry.get("channels", {}).pop(ds_index, None)
             self._schedule_auto_save()
         return ch
 
@@ -647,6 +787,270 @@ class Output:
                     channel_type=ct,
                     ds_index=i,
                 )
+
+    # ==================================================================
+    # Scene table management
+    # ==================================================================
+
+    def _init_default_scenes(self) -> None:
+        """Populate the scene table with standard defaults.
+
+        Generates a default entry for every ``SceneNumber`` that
+        represents a stored-value scene (i.e. not stepping/stop).
+        """
+        for sn in SceneNumber:
+            nr = int(sn)
+            if nr in _NON_VALUE_SCENES:
+                continue
+            self._scenes[nr] = _build_default_scene_entry(
+                nr, self._channels
+            )
+
+    def _ensure_scene_channel_entries(self) -> None:
+        """Ensure every scene contains entries for all current channels.
+
+        Called after ``add_channel`` so that new channels get default
+        scene values in every existing scene.
+        """
+        for nr, entry in self._scenes.items():
+            ch_entries = entry.get("channels", {})
+            is_off = nr in _OFF_SCENES
+            is_on = nr in _ON_SCENES
+            has_default = is_off or is_on
+            for idx, ch in self._channels.items():
+                if idx not in ch_entries:
+                    if is_off:
+                        val: Optional[float] = ch.min_value
+                    elif is_on:
+                        val = ch.max_value
+                    else:
+                        val = ch.min_value
+                    ch_entries[idx] = {
+                        "value": val,
+                        "dontCare": not has_default,
+                        "automatic": False,
+                    }
+            entry["channels"] = ch_entries
+
+    def get_scene(self, scene_nr: int) -> Optional[Dict[str, Any]]:
+        """Return the scene entry for *scene_nr*, or ``None``."""
+        return self._scenes.get(scene_nr)
+
+    def get_scene_properties(self) -> Dict[str, Any]:
+        """Return scenes in the API property format.
+
+        The vDC API §4.10 defines the scene property as a dict keyed
+        by scene number (as string), each containing ``dontCare``,
+        ``ignoreLocalPriority``, ``effect``, and a ``channels`` dict
+        keyed by channel type ID (as string) with per-channel
+        ``value``, ``dontCare``, and ``automatic``.
+        """
+        result: Dict[str, Any] = {}
+        for nr, entry in self._scenes.items():
+            ch_api: Dict[str, Any] = {}
+            for idx, ch_val in entry.get("channels", {}).items():
+                ch = self._channels.get(idx)
+                if ch is not None:
+                    ch_api[str(int(ch.channel_type))] = {
+                        "value": ch_val.get("value"),
+                        "dontCare": ch_val.get("dontCare", False),
+                        "automatic": ch_val.get("automatic", False),
+                    }
+            result[str(nr)] = {
+                "dontCare": entry.get("dontCare", True),
+                "ignoreLocalPriority": entry.get(
+                    "ignoreLocalPriority", False
+                ),
+                "effect": entry.get("effect", int(SceneEffect.NONE)),
+                "channels": ch_api,
+            }
+        return result
+
+    def apply_scenes(self, scene_data: Dict[str, Any]) -> None:
+        """Apply scene settings from the vdSM (``setProperty`` for scenes).
+
+        *scene_data* is a dict keyed by scene number (string),
+        each containing the API-level scene structure with ``channels``
+        keyed by channel type ID (string).
+        """
+        for nr_str, api_entry in scene_data.items():
+            nr = int(nr_str)
+            entry = self._scenes.get(nr)
+            if entry is None:
+                entry = _build_default_scene_entry(nr, self._channels)
+                self._scenes[nr] = entry
+
+            if "dontCare" in api_entry:
+                entry["dontCare"] = bool(api_entry["dontCare"])
+            if "ignoreLocalPriority" in api_entry:
+                entry["ignoreLocalPriority"] = bool(
+                    api_entry["ignoreLocalPriority"]
+                )
+            if "effect" in api_entry:
+                entry["effect"] = int(api_entry["effect"])
+            if "channels" in api_entry and isinstance(
+                api_entry["channels"], dict
+            ):
+                ch_entries = entry.setdefault("channels", {})
+                for ct_str, ch_val in api_entry["channels"].items():
+                    ct = int(ct_str)
+                    # Find the dsIndex for this channel type.
+                    target_idx: Optional[int] = None
+                    for idx, ch in self._channels.items():
+                        if int(ch.channel_type) == ct:
+                            target_idx = idx
+                            break
+                    if target_idx is None:
+                        continue
+                    ch_entry = ch_entries.get(target_idx, {
+                        "value": None,
+                        "dontCare": True,
+                        "automatic": False,
+                    })
+                    if isinstance(ch_val, dict):
+                        if "value" in ch_val:
+                            ch_entry["value"] = (
+                                float(ch_val["value"])
+                                if ch_val["value"] is not None
+                                else None
+                            )
+                        if "dontCare" in ch_val:
+                            ch_entry["dontCare"] = bool(
+                                ch_val["dontCare"]
+                            )
+                        if "automatic" in ch_val:
+                            ch_entry["automatic"] = bool(
+                                ch_val["automatic"]
+                            )
+                    ch_entries[target_idx] = ch_entry
+        self._schedule_auto_save()
+
+    def call_scene(self, scene_nr: int, *, force: bool = False) -> None:
+        """Apply the stored scene values to the output channels.
+
+        Parameters
+        ----------
+        scene_nr:
+            The dS scene number to call.
+        force:
+            If ``True``, local priority is overridden.
+
+        Behaviour:
+
+        * If the scene's global ``dontCare`` flag is set, do nothing.
+        * If **local priority** is active and neither ``force`` nor the
+          scene's ``ignoreLocalPriority`` flag is set, do nothing.
+        * For each channel, if the channel-level ``dontCare`` is not
+          set, the stored value is applied.
+        * The undo snapshot is taken **before** values are changed.
+        """
+        entry = self._scenes.get(scene_nr)
+        if entry is None:
+            logger.debug(
+                "call_scene %d: no entry — ignoring", scene_nr
+            )
+            return
+
+        # Scene-global dontCare → ignore entirely.
+        if entry.get("dontCare", False):
+            logger.debug(
+                "call_scene %d: global dontCare — ignoring", scene_nr
+            )
+            return
+
+        # Local priority check.
+        if self._local_priority and not force:
+            if not entry.get("ignoreLocalPriority", False):
+                logger.debug(
+                    "call_scene %d: blocked by local priority",
+                    scene_nr,
+                )
+                return
+
+        # Take undo snapshot.
+        self._undo_snapshot = {
+            idx: ch.value for idx, ch in self._channels.items()
+            if ch.value is not None
+        }
+        self._last_called_scene = scene_nr
+
+        # Apply channel values.
+        ch_entries = entry.get("channels", {})
+        for idx, ch_val in ch_entries.items():
+            if ch_val.get("dontCare", False):
+                continue
+            ch = self._channels.get(idx)
+            if ch is None:
+                continue
+            value = ch_val.get("value")
+            if value is not None:
+                ch.set_value_from_vdsm(value)
+                ch.confirm_applied()
+
+        logger.debug(
+            "call_scene %d: applied to output '%s'",
+            scene_nr, self._name,
+        )
+
+    def save_scene(self, scene_nr: int) -> None:
+        """Save the current channel values into the scene entry.
+
+        This captures the current output state so that when the scene
+        is later called, these values will be restored.
+        """
+        entry = self._scenes.get(scene_nr)
+        if entry is None:
+            entry = _build_default_scene_entry(scene_nr, self._channels)
+            self._scenes[scene_nr] = entry
+
+        ch_entries = entry.setdefault("channels", {})
+        for idx, ch in self._channels.items():
+            ch_entry = ch_entries.get(idx, {
+                "value": None,
+                "dontCare": False,
+                "automatic": False,
+            })
+            ch_entry["value"] = ch.value
+            ch_entry["dontCare"] = False
+            ch_entries[idx] = ch_entry
+
+        # Mark scene as active (not dontCare) since the user saved it.
+        entry["dontCare"] = False
+
+        self._schedule_auto_save()
+        logger.debug(
+            "save_scene %d: saved current values for output '%s'",
+            scene_nr, self._name,
+        )
+
+    def undo_scene(self, scene_nr: int) -> None:
+        """Undo the last scene call if it matches *scene_nr*.
+
+        Restores channel values to the snapshot taken before the
+        matching ``call_scene``.  If the last called scene does not
+        match, or no snapshot exists, nothing happens.
+        """
+        if self._last_called_scene != scene_nr:
+            logger.debug(
+                "undo_scene %d: last called was %s — ignoring",
+                scene_nr, self._last_called_scene,
+            )
+            return
+        if self._undo_snapshot is None:
+            return
+
+        for idx, value in self._undo_snapshot.items():
+            ch = self._channels.get(idx)
+            if ch is not None:
+                ch.set_value_from_vdsm(value)
+                ch.confirm_applied()
+
+        logger.debug(
+            "undo_scene %d: restored previous values for output '%s'",
+            scene_nr, self._name,
+        )
+        self._undo_snapshot = None
+        self._last_called_scene = None
 
     # ==================================================================
     # apply_now buffering (§7.3.9)
@@ -1011,6 +1415,30 @@ class Output:
                 for ch in self._channels.values()
             ]
 
+        # Scenes — persist as dict keyed by scene number (as string).
+        # Only persist scenes that differ from the pure default
+        # (i.e. all scenes, since they may be modified at runtime).
+        if self._scenes:
+            scenes_tree: Dict[str, Any] = {}
+            for nr, entry in self._scenes.items():
+                s: Dict[str, Any] = {
+                    "dontCare": entry.get("dontCare", True),
+                    "ignoreLocalPriority": entry.get(
+                        "ignoreLocalPriority", False
+                    ),
+                    "effect": entry.get("effect", 0),
+                }
+                ch_data: Dict[str, Any] = {}
+                for idx, ch_val in entry.get("channels", {}).items():
+                    ch_data[str(idx)] = {
+                        "value": ch_val.get("value"),
+                        "dontCare": ch_val.get("dontCare", False),
+                        "automatic": ch_val.get("automatic", False),
+                    }
+                s["channels"] = ch_data
+                scenes_tree[str(nr)] = s
+            tree["scenes"] = scenes_tree
+
         return tree
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
@@ -1093,6 +1521,42 @@ class Output:
             # If no channels stored, re-auto-create from function.
             self._channels.clear()
             self._auto_create_channels()
+
+        # Restore scenes from persisted state.
+        if "scenes" in state:
+            self._scenes.clear()
+            for nr_str, s in state["scenes"].items():
+                nr = int(nr_str)
+                ch_entries: Dict[int, Dict[str, Any]] = {}
+                for idx_str, ch_val in s.get("channels", {}).items():
+                    idx = int(idx_str)
+                    ch_entries[idx] = {
+                        "value": (
+                            float(ch_val["value"])
+                            if ch_val.get("value") is not None
+                            else None
+                        ),
+                        "dontCare": bool(
+                            ch_val.get("dontCare", False)
+                        ),
+                        "automatic": bool(
+                            ch_val.get("automatic", False)
+                        ),
+                    }
+                self._scenes[nr] = {
+                    "dontCare": bool(s.get("dontCare", True)),
+                    "ignoreLocalPriority": bool(
+                        s.get("ignoreLocalPriority", False)
+                    ),
+                    "effect": int(
+                        s.get("effect", int(SceneEffect.NONE))
+                    ),
+                    "channels": ch_entries,
+                }
+        else:
+            # No persisted scenes — regenerate defaults.
+            self._scenes.clear()
+            self._init_default_scenes()
 
     # ==================================================================
     # Session management

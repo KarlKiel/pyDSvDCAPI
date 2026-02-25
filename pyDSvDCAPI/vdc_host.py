@@ -919,6 +919,26 @@ class VdcHost:
             await self._handle_set_output_channel_value(session, msg)
             return None
 
+        if msg_type == pb.VDSM_NOTIFICATION_CALL_SCENE:
+            await self._handle_call_scene(msg)
+            return None
+
+        if msg_type == pb.VDSM_NOTIFICATION_SAVE_SCENE:
+            await self._handle_save_scene(msg)
+            return None
+
+        if msg_type == pb.VDSM_NOTIFICATION_UNDO_SCENE:
+            await self._handle_undo_scene(msg)
+            return None
+
+        if msg_type == pb.VDSM_NOTIFICATION_SET_LOCAL_PRIO:
+            await self._handle_set_local_priority(msg)
+            return None
+
+        if msg_type == pb.VDSM_NOTIFICATION_CALL_MIN_SCENE:
+            await self._handle_call_min_scene(msg)
+            return None
+
         # Delegate to the user callback.
         if self._on_message is not None:
             return await self._on_message(session, msg)
@@ -1115,6 +1135,17 @@ class VdcHost:
                         "vdSD '%s' outputState updated",
                         vdsd.dsuid,
                     )
+        # Scene settings (§4.1.4 / §4.10).
+        if "scenes" in incoming:
+            scene_data = incoming["scenes"]
+            if isinstance(scene_data, dict):
+                output = getattr(vdsd, "output", None)
+                if output is not None:
+                    output.apply_scenes(scene_data)
+                    logger.info(
+                        "vdSD '%s' scenes updated",
+                        vdsd.dsuid,
+                    )
 
     # ---- setOutputChannelValue notification handler ------------------
 
@@ -1201,6 +1232,151 @@ class VdcHost:
             # hardware apply of all pending updates.
             if notif.apply_now:
                 await output.apply_pending_channels()
+
+    # ---- scene notification handlers ---------------------------------
+
+    async def _handle_call_scene(self, msg: pb.Message) -> None:
+        """Handle ``VDSM_NOTIFICATION_CALL_SCENE`` (§7.3.1)."""
+        notif = msg.vdsm_send_call_scene
+        scene = notif.scene
+        force = notif.force
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "callScene: vdSD %s not found", dsuid_str
+                )
+                continue
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                logger.debug(
+                    "callScene: vdSD %s has no output", dsuid_str
+                )
+                continue
+            output.call_scene(scene, force=force)
+            # Trigger the on_channel_applied callback so the
+            # integrator can react to the new values.
+            await output.apply_pending_channels()
+            logger.debug(
+                "callScene %d (force=%s) on vdSD %s",
+                scene, force, dsuid_str,
+            )
+
+    async def _handle_save_scene(self, msg: pb.Message) -> None:
+        """Handle ``VDSM_NOTIFICATION_SAVE_SCENE`` (§7.3.2)."""
+        notif = msg.vdsm_send_save_scene
+        scene = notif.scene
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "saveScene: vdSD %s not found", dsuid_str
+                )
+                continue
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                logger.debug(
+                    "saveScene: vdSD %s has no output", dsuid_str
+                )
+                continue
+            output.save_scene(scene)
+            logger.debug(
+                "saveScene %d on vdSD %s", scene, dsuid_str
+            )
+
+    async def _handle_undo_scene(self, msg: pb.Message) -> None:
+        """Handle ``VDSM_NOTIFICATION_UNDO_SCENE`` (§7.3.3)."""
+        notif = msg.vdsm_send_undo_scene
+        scene = notif.scene
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "undoScene: vdSD %s not found", dsuid_str
+                )
+                continue
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                logger.debug(
+                    "undoScene: vdSD %s has no output", dsuid_str
+                )
+                continue
+            output.undo_scene(scene)
+            # Trigger callback for the restored values.
+            await output.apply_pending_channels()
+            logger.debug(
+                "undoScene %d on vdSD %s", scene, dsuid_str
+            )
+
+    async def _handle_set_local_priority(
+        self, msg: pb.Message
+    ) -> None:
+        """Handle ``VDSM_NOTIFICATION_SET_LOCAL_PRIO`` (§7.3.4).
+
+        Sets ``localPriority`` on the output if the referenced scene
+        does **not** have its ``dontCare`` flag set.
+        """
+        notif = msg.vdsm_send_set_local_prio
+        scene = notif.scene
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                continue
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                continue
+            entry = output.get_scene(scene)
+            if entry is not None and not entry.get("dontCare", False):
+                output.local_priority = True
+                logger.debug(
+                    "setLocalPriority: set on vdSD %s (scene %d)",
+                    dsuid_str, scene,
+                )
+
+    async def _handle_call_min_scene(
+        self, msg: pb.Message
+    ) -> None:
+        """Handle ``VDSM_NOTIFICATION_CALL_MIN_SCENE`` (§7.3.6).
+
+        If the device is off (primary channel at min), set it to the
+        minimum brightness / value needed to become logically "on".
+        Only acts if the referenced scene does not have dontCare set.
+        """
+        notif = msg.vdsm_send_call_min_scene
+        scene = notif.scene
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                continue
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                continue
+            entry = output.get_scene(scene)
+            if entry is not None and entry.get("dontCare", False):
+                continue
+            # Find the primary channel (dsIndex 0).
+            primary = output.get_channel(0)
+            if primary is None:
+                continue
+            # Only act if the device is currently off.
+            if primary.value is not None and primary.value > primary.min_value:
+                continue
+            # Set to min_brightness if available, otherwise min + resolution.
+            min_on = output.min_brightness
+            if min_on is None:
+                min_on = primary.min_value + primary.resolution
+            primary.set_value_from_vdsm(min_on)
+            primary.confirm_applied()
+            await output.apply_pending_channels()
+            logger.debug(
+                "callMinScene %d: set min-on on vdSD %s",
+                scene, dsuid_str,
+            )
 
     # ---- dunder -------------------------------------------------------
 

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from pyDSvDCAPI import genericVDC_pb2 as pb
 from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
 from pyDSvDCAPI.enums import (
     ColorGroup,
@@ -1416,3 +1417,538 @@ class TestOutputEdgeCases:
         # Volatile state should be defaults.
         assert r.local_priority is False
         assert r.error == OutputError.OK
+
+
+# ===========================================================================
+# Scene support
+# ===========================================================================
+
+
+class TestOutputScenes:
+    """Tests for scene table management on Output."""
+
+    def test_default_scene_table_contains_standard_entries(self):
+        """After construction a dimmer output should have default
+        scenes for all value-bearing SceneNumber entries."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+        from pyDSvDCAPI.output import _NON_VALUE_SCENES
+
+        # Each SceneNumber that is NOT a non-value scene should exist.
+        for sn in SceneNumber:
+            nr = int(sn)
+            if nr in _NON_VALUE_SCENES:
+                assert out.get_scene(nr) is None, (
+                    f"Non-value scene {sn.name} should not be in table"
+                )
+            else:
+                entry = out.get_scene(nr)
+                assert entry is not None, (
+                    f"Scene {sn.name} ({nr}) missing from default table"
+                )
+                # Every scene should have channel entries matching the
+                # output's channels.
+                for idx in out.channels:
+                    assert idx in entry.get("channels", {}), (
+                        f"Channel {idx} missing in scene {sn.name}"
+                    )
+
+    def test_off_scene_defaults_to_min(self):
+        """Off scenes should default primary channel to min_value."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        entry = out.get_scene(int(SceneNumber.PRESET_0))
+        assert entry is not None
+        assert entry["dontCare"] is False
+        ch_vals = entry["channels"]
+        # Brightness channel at index 0.
+        assert ch_vals[0]["value"] == 0.0
+        assert ch_vals[0]["dontCare"] is False
+
+    def test_on_scene_defaults_to_max(self):
+        """On scenes should default primary channel to max_value."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        entry = out.get_scene(int(SceneNumber.PRESET_1))
+        assert entry is not None
+        assert entry["dontCare"] is False
+        ch_vals = entry["channels"]
+        assert ch_vals[0]["value"] == 100.0  # brightness max
+        assert ch_vals[0]["dontCare"] is False
+
+    def test_non_standard_scene_defaults_to_dont_care(self):
+        """Non-standard scenes default to global dontCare=True."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        # Preset 2 (scene 17) is not an off or on scene.
+        entry = out.get_scene(int(SceneNumber.PRESET_2))
+        assert entry is not None
+        assert entry["dontCare"] is True
+
+    def test_call_scene_applies_values(self):
+        """call_scene should apply stored channel values."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        # PRESET_1 = on → brightness = 100.
+        ch = out.get_channel(0)
+        assert ch is not None
+        # Channel starts at None; calling on-scene should set it.
+        out.call_scene(int(SceneNumber.PRESET_1))
+        assert ch.value == 100.0
+
+    def test_call_scene_respects_global_dont_care(self):
+        """If scene has global dontCare, call_scene does nothing."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        # PRESET_2 defaults to dontCare=True.
+        out.call_scene(int(SceneNumber.PRESET_2))
+        assert ch.value == 42.0  # unchanged
+
+    def test_call_scene_blocked_by_local_priority(self):
+        """Local priority blocks scene unless force or ignoreLP."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+        out.local_priority = True
+
+        # Normal call — blocked.
+        out.call_scene(int(SceneNumber.PRESET_0))
+        assert ch.value == 42.0
+
+        # Force call — overrides.
+        out.call_scene(int(SceneNumber.PRESET_0), force=True)
+        assert ch.value == 0.0
+
+    def test_call_scene_ignore_local_priority_flag(self):
+        """Alarm scenes with ignoreLocalPriority override LP."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+        out.local_priority = True
+
+        # PANIC has ignoreLocalPriority=True by default.
+        entry = out.get_scene(int(SceneNumber.PANIC))
+        assert entry is not None
+        assert entry["ignoreLocalPriority"] is True
+        # But PANIC also defaults to dontCare for a standard dimmer.
+        # Manually clear dontCare so we can test LP bypass.
+        entry["dontCare"] = False
+        entry["channels"][0]["dontCare"] = False
+        entry["channels"][0]["value"] = 0.0
+
+        out.call_scene(int(SceneNumber.PANIC))
+        assert ch.value == 0.0  # applied despite LP
+
+    def test_call_scene_respects_channel_dont_care(self):
+        """Per-channel dontCare should skip that channel."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(
+            vdsd, function=OutputFunction.DIMMER_COLOR_TEMP
+        )
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        # Set initial values.
+        brightness = out.get_channel(0)
+        colortemp = out.get_channel(1)
+        brightness.set_value_from_vdsm(50.0)
+        brightness.confirm_applied()
+        colortemp.set_value_from_vdsm(500.0)
+        colortemp.confirm_applied()
+
+        # Modify PRESET_1: set colortemp dontCare.
+        entry = out.get_scene(int(SceneNumber.PRESET_1))
+        entry["channels"][1]["dontCare"] = True
+
+        out.call_scene(int(SceneNumber.PRESET_1))
+        assert brightness.value == 100.0  # applied
+        assert colortemp.value == 500.0  # unchanged (dontCare)
+
+    def test_save_scene_captures_current_values(self):
+        """save_scene should store current channel values."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(73.0)
+        ch.confirm_applied()
+
+        out.save_scene(5)  # PRESET_1
+
+        entry = out.get_scene(5)
+        assert entry is not None
+        assert entry["dontCare"] is False
+        assert entry["channels"][0]["value"] == 73.0
+        assert entry["channels"][0]["dontCare"] is False
+
+    def test_undo_scene_restores_previous_values(self):
+        """undo_scene should restore the snapshot from before call."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        out.call_scene(int(SceneNumber.PRESET_0))
+        assert ch.value == 0.0
+
+        out.undo_scene(int(SceneNumber.PRESET_0))
+        assert ch.value == 42.0
+
+    def test_undo_scene_ignores_mismatch(self):
+        """undo_scene with non-matching scene_nr does nothing."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        out.call_scene(int(SceneNumber.PRESET_0))
+        assert ch.value == 0.0
+
+        # Undo with wrong scene number.
+        out.undo_scene(int(SceneNumber.PRESET_1))
+        assert ch.value == 0.0  # unchanged
+
+    def test_scenes_persist_and_restore(self):
+        """Scene data should survive a get_property_tree / _apply_state
+        round-trip."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        # Modify a scene.
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(77.0)
+        ch.confirm_applied()
+        out.save_scene(5)
+
+        tree = out.get_property_tree()
+        assert "scenes" in tree
+
+        # Restore into a fresh output.
+        _, _, _, vdsd2 = _make_stack()
+        out2 = _make_output(vdsd2, function=OutputFunction.DIMMER)
+        vdsd2.set_output(out2)
+        out2._apply_state(tree)
+
+        entry = out2.get_scene(5)
+        assert entry is not None
+        assert entry["dontCare"] is False
+        assert entry["channels"][0]["value"] == 77.0
+
+    def test_scenes_exposed_in_vdsd_properties(self):
+        """vdsd.get_properties() should include scenes."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        props = vdsd.get_properties()
+        assert "scenes" in props
+        scenes = props["scenes"]
+        # Should have scene entries keyed by string number.
+        assert "0" in scenes
+        assert "5" in scenes
+        # Each scene should have channels keyed by channel type.
+        scene_0 = scenes["0"]
+        assert "dontCare" in scene_0
+        assert "ignoreLocalPriority" in scene_0
+        assert "effect" in scene_0
+        assert "channels" in scene_0
+
+    def test_apply_scenes_from_vdsm(self):
+        """apply_scenes should update scene values from API format."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import OutputChannelType
+
+        # API format: keyed by scene number (str), channels by type (str).
+        scene_data = {
+            "5": {
+                "dontCare": False,
+                "ignoreLocalPriority": True,
+                "effect": 2,
+                "channels": {
+                    str(int(OutputChannelType.BRIGHTNESS)): {
+                        "value": 66.0,
+                        "dontCare": False,
+                    },
+                },
+            }
+        }
+        out.apply_scenes(scene_data)
+
+        entry = out.get_scene(5)
+        assert entry is not None
+        assert entry["dontCare"] is False
+        assert entry["ignoreLocalPriority"] is True
+        assert entry["effect"] == 2
+        assert entry["channels"][0]["value"] == 66.0
+
+    def test_add_channel_updates_scenes(self):
+        """Adding a channel should add entries in all existing scenes."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(
+            vdsd, function=OutputFunction.POSITIONAL
+        )
+        vdsd.set_output(out)
+
+        from pyDSvDCAPI.enums import OutputChannelType
+
+        # POSITIONAL has no auto-created channels.
+        assert len(out.channels) == 0
+        assert len(out._scenes) > 0  # defaults still generated
+
+        # Add a channel.
+        out.add_channel(OutputChannelType.SHADE_POSITION_OUTSIDE)
+
+        # All scenes should now have the new channel.
+        for nr, entry in out._scenes.items():
+            assert 0 in entry.get("channels", {}), (
+                f"Scene {nr} missing channel 0 after add"
+            )
+
+
+class TestVdcHostSceneDispatch:
+    """Tests for VdcHost scene notification dispatch."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_call_scene(self):
+        """callScene notification routes to output.call_scene."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0  # PRESET_0 (off)
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        assert ch.value == 0.0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_save_scene(self):
+        """saveScene notification routes to output.save_scene."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(88.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SAVE_SCENE
+        msg.vdsm_send_save_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_save_scene.scene = 5
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        entry = out.get_scene(5)
+        assert entry["channels"][0]["value"] == 88.0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_undo_scene(self):
+        """undoScene notification routes to output.undo_scene."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        # Call scene to set up undo state.
+        out.call_scene(0)
+        assert ch.value == 0.0
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_UNDO_SCENE
+        msg.vdsm_send_undo_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_undo_scene.scene = 0
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        assert ch.value == 42.0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_set_local_priority(self):
+        """setLocalPriority sets LP when scene is not dontCare."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        assert out.local_priority is False
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SET_LOCAL_PRIO
+        msg.vdsm_send_set_local_prio.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_set_local_prio.scene = 0  # PRESET_0 is not dontCare
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        assert out.local_priority is True
+
+    @pytest.mark.asyncio
+    async def test_dispatch_set_local_priority_skips_dontcare(self):
+        """setLocalPriority does NOT set LP when scene IS dontCare."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        from pyDSvDCAPI.enums import SceneNumber
+
+        assert out.local_priority is False
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SET_LOCAL_PRIO
+        msg.vdsm_send_set_local_prio.dSUID.append(str(vdsd.dsuid))
+        # PRESET_2 defaults to dontCare=True.
+        msg.vdsm_send_set_local_prio.scene = int(SceneNumber.PRESET_2)
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        assert out.local_priority is False
+
+    @pytest.mark.asyncio
+    async def test_dispatch_call_min_scene(self):
+        """callMinScene sets min-on when device is off."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        ch = out.get_channel(0)
+        # Channel starts at None; init to 0 to simulate 'off'.
+        ch.set_value_from_vdsm(0.0)
+        ch.confirm_applied()
+        assert ch.value == 0.0  # off
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_MIN_SCENE
+        msg.vdsm_send_call_min_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_min_scene.scene = 0  # PRESET_0 not dontCare
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        # Should be set to min_on value (min + resolution).
+        assert ch.value > 0.0
+
+    @pytest.mark.asyncio
+    async def test_set_property_scenes(self):
+        """setProperty with scenes key routes to output.apply_scenes."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        from pyDSvDCAPI.enums import OutputChannelType
+        from pyDSvDCAPI.property_handling import dict_to_elements
+
+        scene_data = {
+            "scenes": {
+                "5": {
+                    "dontCare": False,
+                    "channels": {
+                        str(int(OutputChannelType.BRIGHTNESS)): {
+                            "value": 55.0,
+                            "dontCare": False,
+                        },
+                    },
+                },
+            },
+        }
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_REQUEST_SET_PROPERTY
+        msg.vdsm_request_set_property.dSUID = str(vdsd.dsuid)
+        for elem in dict_to_elements(scene_data):
+            msg.vdsm_request_set_property.properties.append(elem)
+
+        resp = host._handle_set_property(msg)
+        assert resp.generic_response.code == pb.ERR_OK
+
+        entry = out.get_scene(5)
+        assert entry["channels"][0]["value"] == 55.0

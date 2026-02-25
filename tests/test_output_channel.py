@@ -1214,10 +1214,10 @@ class TestVdcHostSetOutputChannelValue:
 
         session = _make_mock_session()
         msg = pb.Message()
-        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.type = pb.VDSM_NOTIFICATION_IDENTIFY
 
         await host._dispatch_message(session, msg)
-        assert pb.VDSM_NOTIFICATION_CALL_SCENE in received
+        assert pb.VDSM_NOTIFICATION_IDENTIFY in received
 
 
 # ===========================================================================

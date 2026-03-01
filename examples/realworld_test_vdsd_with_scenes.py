@@ -68,6 +68,7 @@ from pathlib import Path
 from pyDSvDCAPI import (
     ColorGroup,
     Device,
+    DeviceEvent,
     DsUid,
     DsUidNamespace,
     Output,
@@ -352,6 +353,12 @@ async def main() -> None:
     output_light.on_channel_applied = on_channel_applied
     vdsd_light.set_output(output_light)
     vdsd_light.on_control_value = on_control_value
+    # Device events (§4.7) — stateless event definitions.
+    vdsd_light.add_device_event(DeviceEvent(
+        vdsd=vdsd_light, ds_index=0,
+        name="lightToggle",
+        description="Light toggle triggered externally",
+    ))
     device.add_vdsd(vdsd_light)
 
     # vdSD 1: Shade (Grey) — POSITIONAL → manually add channels
@@ -380,6 +387,17 @@ async def main() -> None:
     output_shade.add_channel(OutputChannelType.SHADE_POSITION_INDOOR)
     vdsd_shade.set_output(output_shade)
     vdsd_shade.on_control_value = on_control_value
+    # Device events (§4.7) — stateless event definitions.
+    vdsd_shade.add_device_event(DeviceEvent(
+        vdsd=vdsd_shade, ds_index=0,
+        name="windAlarm",
+        description="Wind speed threshold exceeded",
+    ))
+    vdsd_shade.add_device_event(DeviceEvent(
+        vdsd=vdsd_shade, ds_index=1,
+        name="rainDetected",
+        description="Rain sensor activated",
+    ))
     device.add_vdsd(vdsd_shade)
 
     vdc.add_device(device)
@@ -785,6 +803,21 @@ async def main() -> None:
     logger.info("  Shade output: function=%s  channels=%d  %sPASS%s",
                 r_out_shade.function.name, len(r_out_shade.channels),
                 GREEN, RESET)
+
+    # ---- Verify device events restored from persistence -------------
+    section("Verifying device events after restart")
+    assert len(r_light.device_events) == 1, "Light events not restored"
+    assert r_light.get_device_event(0).name == "lightToggle"
+    logger.info("  Light events: %d  [0]='%s'  %sPASS%s",
+                len(r_light.device_events),
+                r_light.get_device_event(0).name, GREEN, RESET)
+    assert len(r_shade.device_events) == 2, "Shade events not restored"
+    assert r_shade.get_device_event(0).name == "windAlarm"
+    assert r_shade.get_device_event(1).name == "rainDetected"
+    logger.info("  Shade events: %d  [0]='%s' [1]='%s'  %sPASS%s",
+                len(r_shade.device_events),
+                r_shade.get_device_event(0).name,
+                r_shade.get_device_event(1).name, GREEN, RESET)
 
     # ---- Verify scene persistence ------------------------------------
     section("Verifying scene persistence after restart")

@@ -939,6 +939,10 @@ class VdcHost:
             await self._handle_call_min_scene(msg)
             return None
 
+        if msg_type == pb.VDSM_NOTIFICATION_SET_CONTROL_VALUE:
+            await self._handle_set_control_value(msg)
+            return None
+
         # Delegate to the user callback.
         if self._on_message is not None:
             return await self._on_message(session, msg)
@@ -1161,6 +1165,42 @@ class VdcHost:
             if vdsd is not None:
                 return vdsd
         return None
+
+    async def _handle_set_control_value(
+        self, msg: pb.Message
+    ) -> None:
+        """Handle ``VDSM_NOTIFICATION_SET_CONTROL_VALUE`` (§7.3.8).
+
+        Stores the control value on the target vdSD(s) and invokes
+        the device's ``on_control_value`` callback if set.
+        """
+        notif = msg.vdsm_send_set_control_value
+        name = notif.name
+        value = notif.value
+        group: Optional[int] = (
+            int(notif.group) if notif.group else None
+        )
+        zone_id: Optional[int] = (
+            int(notif.zone_id) if notif.zone_id else None
+        )
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "setControlValue: vdSD %s not found",
+                    dsuid_str,
+                )
+                continue
+            try:
+                await vdsd.set_control_value(
+                    name, value, group, zone_id
+                )
+            except Exception:
+                logger.exception(
+                    "setControlValue callback raised for vdSD %s",
+                    dsuid_str,
+                )
 
     async def _handle_set_output_channel_value(
         self,

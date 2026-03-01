@@ -68,12 +68,14 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Awaitable,
     Callable,
     ClassVar,
     Dict,
     List,
     Optional,
     Set,
+    Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
@@ -96,6 +98,24 @@ logger = logging.getLogger(__name__)
 
 #: Entity type string for a vdSD (common property ``type``).
 ENTITY_TYPE_VDSD: str = "vdSD"
+
+#: Type alias for the control-value callback.
+#:
+#: Signature::
+#:
+#:     async def callback(vdsd, name, value, group, zone_id) -> None
+#:     # or sync:
+#:     def callback(vdsd, name, value, group, zone_id) -> None
+#:
+#: ``vdsd`` is the :class:`Vdsd` instance that received the
+#: control value, ``name`` is the control-value name (e.g.
+#: ``"heatingLevel"``), ``value`` is the numeric value, and
+#: ``group`` / ``zone_id`` are optional contextual integers
+#: (``None`` when not provided by the vdSM).
+ControlValueCallback = Callable[
+    ["Vdsd", str, float, Optional[int], Optional[int]],
+    Union[None, Awaitable[None]],
+]
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +275,13 @@ class Vdsd:
         self._announced: bool = False
         self._session: Optional[VdcSession] = None
 
+        # --- control values (volatile – NOT persisted) ----------------
+        #: Stores the latest control values received from the dSS.
+        #: Keyed by control-value name (e.g. ``"heatingLevel"``).
+        #: Each entry is a dict with ``value``, ``group``, ``zone_id``.
+        self._control_values: Dict[str, Dict[str, Any]] = {}
+        self._on_control_value: Optional[ControlValueCallback] = None
+
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
 
@@ -321,6 +348,81 @@ class Vdsd:
     def is_announced(self) -> bool:
         """``True`` if this vdSD has been announced to the vdSM."""
         return self._announced
+
+    # ---- control values (volatile runtime state from dSS) -----------
+
+    @property
+    def control_values(self) -> Dict[str, Dict[str, Any]]:
+        """All current control values as ``{name: {value, group, zone_id}}``.
+
+        Returns a shallow copy — callers cannot mutate the internal
+        store.
+        """
+        return {
+            name: dict(entry)
+            for name, entry in self._control_values.items()
+        }
+
+    def get_control_value(self, name: str) -> Optional[Dict[str, Any]]:
+        """Return a single control value entry, or ``None`` if unset.
+
+        The returned dict has keys ``value`` (float), ``group``
+        (int | None), ``zone_id`` (int | None).
+        """
+        entry = self._control_values.get(name)
+        if entry is not None:
+            return dict(entry)
+        return None
+
+    @property
+    def on_control_value(self) -> Optional[ControlValueCallback]:
+        """Callback invoked when the dSS pushes a control value."""
+        return self._on_control_value
+
+    @on_control_value.setter
+    def on_control_value(
+        self, callback: Optional[ControlValueCallback]
+    ) -> None:
+        self._on_control_value = callback
+
+    async def set_control_value(
+        self,
+        name: str,
+        value: float,
+        group: Optional[int] = None,
+        zone_id: Optional[int] = None,
+    ) -> None:
+        """Store a control value received from the dSS.
+
+        Parameters
+        ----------
+        name:
+            The control-value name (e.g. ``"heatingLevel"``).
+        value:
+            The numeric value.
+        group:
+            Optional dS colour-group integer.
+        zone_id:
+            Optional dS zone ID.
+        """
+        self._control_values[name] = {
+            "value": value,
+            "group": group,
+            "zone_id": zone_id,
+        }
+        logger.debug(
+            "vdSD %s: control value '%s' = %s "
+            "(group=%s, zone_id=%s)",
+            self._dsuid, name, value, group, zone_id,
+        )
+        if self._on_control_value is not None:
+            import asyncio
+
+            result = self._on_control_value(
+                self, name, value, group, zone_id
+            )
+            if asyncio.iscoroutine(result):
+                await result
 
     # ---- model features management -----------------------------------
 
@@ -642,6 +744,13 @@ class Vdsd:
                 props["scenes"] = (
                     self._output.get_scene_properties()
                 )
+
+        # Control values (volatile runtime state from dSS, §4.11).
+        if self._control_values:
+            props["controlValues"] = {
+                name: dict(entry)
+                for name, entry in self._control_values.items()
+            }
 
         return props
 

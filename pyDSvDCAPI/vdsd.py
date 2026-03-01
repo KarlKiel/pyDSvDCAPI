@@ -85,6 +85,7 @@ from pyDSvDCAPI.enums import ColorGroup
 if TYPE_CHECKING:
     from pyDSvDCAPI.binary_input import BinaryInput
     from pyDSvDCAPI.button_input import ButtonInput
+    from pyDSvDCAPI.device_event import DeviceEvent
     from pyDSvDCAPI.output import Output
     from pyDSvDCAPI.sensor_input import SensorInput
     from pyDSvDCAPI.session import VdcSession
@@ -268,6 +269,7 @@ class Vdsd:
         self._binary_inputs: Dict[int, BinaryInput] = {}
         self._button_inputs: Dict[int, ButtonInput] = {}
         self._sensor_inputs: Dict[int, SensorInput] = {}
+        self._device_events: Dict[int, DeviceEvent] = {}
         self._output: Optional[Output] = None
 
         # --- runtime state --------------------------------------------
@@ -622,6 +624,83 @@ class Vdsd:
             self._schedule_auto_save_if_enabled()
         return output
 
+    # ---- device event management ------------------------------------
+
+    @property
+    def device_events(self) -> Dict[int, "DeviceEvent"]:
+        """All device events keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._device_events)
+
+    def add_device_event(self, evt: "DeviceEvent") -> None:
+        """Register a :class:`DeviceEvent` with this vdSD.
+
+        The event is indexed by its ``dsIndex``.  Adding an event
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the event's owning vdSD is not this instance.
+        """
+        if evt.vdsd is not self:
+            raise ValueError(
+                f"DeviceEvent belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {evt.vdsd.dsuid})"
+            )
+        self._device_events[evt.ds_index] = evt
+        logger.debug(
+            "Added DeviceEvent[%d] '%s' to vdSD %s",
+            evt.ds_index, evt.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_device_event(
+        self, ds_index: int
+    ) -> Optional["DeviceEvent"]:
+        """Remove a device event by ``dsIndex``.
+
+        Returns the removed :class:`DeviceEvent` or ``None``.
+        """
+        evt = self._device_events.pop(ds_index, None)
+        if evt is not None:
+            self._schedule_auto_save_if_enabled()
+        return evt
+
+    def get_device_event(
+        self, ds_index: int
+    ) -> Optional["DeviceEvent"]:
+        """Look up a device event by ``dsIndex``."""
+        return self._device_events.get(ds_index)
+
+    async def raise_device_event(
+        self,
+        ds_index: int,
+        session: Optional["VdcSession"] = None,
+    ) -> None:
+        """Convenience: raise the device event at *ds_index*.
+
+        Parameters
+        ----------
+        ds_index:
+            The event index to raise.
+        session:
+            Optional session override; defaults to the vdSD's
+            current session.
+
+        Raises
+        ------
+        KeyError
+            If no event is registered at *ds_index*.
+        """
+        evt = self._device_events.get(ds_index)
+        if evt is None:
+            raise KeyError(
+                f"No DeviceEvent at index {ds_index} on vdSD "
+                f"{self._dsuid}"
+            )
+        await evt.raise_event(session)
+
     def _schedule_auto_save_if_enabled(self) -> None:
         """Trigger auto-save if enabled."""
         if self._auto_save_enabled:
@@ -714,6 +793,13 @@ class Vdsd:
             props["sensorStates"] = {
                 str(si.ds_index): si.get_state_properties()
                 for si in self._sensor_inputs.values()
+            }
+
+        # Device event descriptions (§4.7).
+        if self._device_events:
+            props["deviceEventDescriptions"] = {
+                str(evt.ds_index): evt.get_description_properties()
+                for evt in self._device_events.values()
             }
 
         # Output component properties (§4.8).
@@ -817,6 +903,13 @@ class Vdsd:
                 for si in self._sensor_inputs.values()
             ]
 
+        # Device events (description only; events are stateless).
+        if self._device_events:
+            node["deviceEvents"] = [
+                evt.get_property_tree()
+                for evt in self._device_events.values()
+            ]
+
         # Output (description + settings; state is volatile).
         if self._output is not None:
             node["output"] = self._output.get_property_tree()
@@ -917,6 +1010,20 @@ class Vdsd:
                         )
                         self._sensor_inputs[idx] = si
                     si._apply_state(si_state)
+
+            # Restore device events.
+            if "deviceEvents" in state:
+                from pyDSvDCAPI.device_event import DeviceEvent
+                for evt_state in state["deviceEvents"]:
+                    idx = evt_state.get("dsIndex", 0)
+                    evt = self._device_events.get(idx)
+                    if evt is None:
+                        evt = DeviceEvent(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._device_events[idx] = evt
+                    evt._apply_state(evt_state)
 
             # Restore output.
             if "output" in state:

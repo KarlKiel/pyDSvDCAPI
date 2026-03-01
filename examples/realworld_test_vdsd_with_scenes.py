@@ -225,6 +225,31 @@ async def on_channel_applied(output: Output, updates: dict) -> None:
 
 
 # ---------------------------------------------------------------------------
+# on_control_value callback
+# ---------------------------------------------------------------------------
+
+async def on_control_value(
+    vdsd: "Vdsd", name: str, value: float,
+    group: int | None, zone_id: int | None,
+) -> None:
+    """Called when the dSS pushes a control value.  Logs for visibility."""
+    logger = logging.getLogger("control_value")
+    extras = []
+    if group is not None:
+        extras.append(f"group={group}")
+    if zone_id is not None:
+        extras.append(f"zone={zone_id}")
+    suffix = f"  ({', '.join(extras)})" if extras else ""
+    logger.info(
+        "%sCONTROL%s  [%s] %s = %.2f%s",
+        CYAN, RESET,
+        vdsd.name,
+        name, value,
+        suffix,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Scene inspection helpers
 # ---------------------------------------------------------------------------
 
@@ -326,6 +351,7 @@ async def main() -> None:
     )
     output_light.on_channel_applied = on_channel_applied
     vdsd_light.set_output(output_light)
+    vdsd_light.on_control_value = on_control_value
     device.add_vdsd(vdsd_light)
 
     # vdSD 1: Shade (Grey) — POSITIONAL → manually add channels
@@ -353,6 +379,7 @@ async def main() -> None:
     output_shade.add_channel(OutputChannelType.SHADE_POSITION_OUTSIDE)
     output_shade.add_channel(OutputChannelType.SHADE_POSITION_INDOOR)
     vdsd_shade.set_output(output_shade)
+    vdsd_shade.on_control_value = on_control_value
     device.add_vdsd(vdsd_shade)
 
     vdc.add_device(device)
@@ -732,6 +759,8 @@ async def main() -> None:
     r_shade = r_device.get_vdsd(1)
     assert r_light is not None, "Light vdSD not restored"
     assert r_shade is not None, "Shade vdSD not restored"
+    r_light.on_control_value = on_control_value
+    r_shade.on_control_value = on_control_value
     assert str(r_light.dsuid) == original_light_dsuid
     assert str(r_shade.dsuid) == original_shade_dsuid
     assert r_light.primary_group == VDSD_LIGHT_GROUP

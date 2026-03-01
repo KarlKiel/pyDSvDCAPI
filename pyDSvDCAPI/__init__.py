@@ -71,6 +71,7 @@ from pyDSvDCAPI.vdc import (  # noqa: F401
 )
 
 from pyDSvDCAPI.vdsd import (  # noqa: F401
+    ControlValueCallback,
     ENTITY_TYPE_VDSD,
     Device,
     Vdsd,

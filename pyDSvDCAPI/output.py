@@ -41,7 +41,7 @@ only carries ``localPriority`` and ``error``.
 
 When a channel value is changed locally (from the device side) and
 ``pushChanges`` is enabled, the output pushes the channel state to
-the vdSM via ``VDC_SEND_PUSH_PROPERTY``.
+the vdSM via ``VDC_SEND_PUSH_NOTIFICATION``.
 
 Persistence
 ~~~~~~~~~~~
@@ -836,6 +836,11 @@ class Output:
         """Return the scene entry for *scene_nr*, or ``None``."""
         return self._scenes.get(scene_nr)
 
+    @property
+    def scene_numbers(self) -> list:
+        """Return all stored scene numbers (for wildcard expansion)."""
+        return list(self._scenes.keys())
+
     def get_scene_properties(self) -> Dict[str, Any]:
         """Return scenes in the API property format.
 
@@ -1120,7 +1125,7 @@ class Output:
 
         Called by :meth:`OutputChannel.update_value` when
         ``pushChanges`` is set.  Sends a
-        ``VDC_SEND_PUSH_PROPERTY`` notification with the
+        ``VDC_SEND_PUSH_NOTIFICATION`` notification with the
         ``channelStates[dsIndex]`` payload.
         """
         session = self._session
@@ -1140,10 +1145,10 @@ class Output:
         }
 
         msg = pb.Message()
-        msg.type = pb.VDC_SEND_PUSH_PROPERTY
-        msg.vdc_send_push_property.dSUID = str(self._vdsd.dsuid)
+        msg.type = pb.VDC_SEND_PUSH_NOTIFICATION
+        msg.vdc_send_push_notification.dSUID = str(self._vdsd.dsuid)
         for elem in dict_to_elements(push_tree):
-            msg.vdc_send_push_property.properties.append(elem)
+            msg.vdc_send_push_notification.changedproperties.append(elem)
 
         try:
             await session.send_notification(msg)

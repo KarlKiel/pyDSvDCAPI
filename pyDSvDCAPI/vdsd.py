@@ -83,9 +83,17 @@ from pyDSvDCAPI.dsuid import DsUid
 from pyDSvDCAPI.enums import ColorGroup
 
 if TYPE_CHECKING:
+    from pyDSvDCAPI.actions import (
+        CustomAction,
+        DeviceActionDescription,
+        DynamicAction,
+        StandardAction,
+    )
     from pyDSvDCAPI.binary_input import BinaryInput
     from pyDSvDCAPI.button_input import ButtonInput
     from pyDSvDCAPI.device_event import DeviceEvent
+    from pyDSvDCAPI.device_property import DeviceProperty
+    from pyDSvDCAPI.device_state import DeviceState
     from pyDSvDCAPI.output import Output
     from pyDSvDCAPI.sensor_input import SensorInput
     from pyDSvDCAPI.session import VdcSession
@@ -115,6 +123,23 @@ ENTITY_TYPE_VDSD: str = "vdSD"
 #: (``None`` when not provided by the vdSM).
 ControlValueCallback = Callable[
     ["Vdsd", str, float, Optional[int], Optional[int]],
+    Union[None, Awaitable[None]],
+]
+
+#: Type alias for the invoke-action callback.
+#:
+#: Signature::
+#:
+#:     async def callback(vdsd, action_id, params) -> None
+#:     # or sync:
+#:     def callback(vdsd, action_id, params) -> None
+#:
+#: ``vdsd`` is the :class:`Vdsd` instance that received the
+#: action invocation, ``action_id`` is the action name string
+#: (e.g. ``"std.play"``), and ``params`` is a dict of any
+#: additional parameter name → value pairs (may be empty).
+InvokeActionCallback = Callable[
+    ["Vdsd", str, Dict[str, Any]],
     Union[None, Awaitable[None]],
 ]
 
@@ -270,6 +295,14 @@ class Vdsd:
         self._button_inputs: Dict[int, ButtonInput] = {}
         self._sensor_inputs: Dict[int, SensorInput] = {}
         self._device_events: Dict[int, DeviceEvent] = {}
+        self._device_states: Dict[int, DeviceState] = {}
+        self._device_properties: Dict[int, DeviceProperty] = {}
+        self._action_descriptions: Dict[
+            int, DeviceActionDescription
+        ] = {}
+        self._standard_actions: Dict[int, StandardAction] = {}
+        self._custom_actions: Dict[int, CustomAction] = {}
+        self._dynamic_actions: Dict[int, DynamicAction] = {}
         self._output: Optional[Output] = None
 
         # --- runtime state --------------------------------------------
@@ -283,6 +316,7 @@ class Vdsd:
         #: Each entry is a dict with ``value``, ``group``, ``zone_id``.
         self._control_values: Dict[str, Dict[str, Any]] = {}
         self._on_control_value: Optional[ControlValueCallback] = None
+        self._on_invoke_action: Optional[InvokeActionCallback] = None
 
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
@@ -424,6 +458,45 @@ class Vdsd:
                 self, name, value, group, zone_id
             )
             if asyncio.iscoroutine(result):
+                await result
+
+    @property
+    def on_invoke_action(self) -> Optional[InvokeActionCallback]:
+        """Callback invoked when the vdSM invokes a device action (§7.3.10)."""
+        return self._on_invoke_action
+
+    @on_invoke_action.setter
+    def on_invoke_action(
+        self, callback: Optional[InvokeActionCallback]
+    ) -> None:
+        self._on_invoke_action = callback
+
+    async def invoke_action(
+        self,
+        action_id: str,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """Handle an ``invokeDeviceAction`` request from the vdSM (§7.3.10).
+
+        Parameters
+        ----------
+        action_id:
+            The action identifier (e.g. ``"std.play"``).
+        params:
+            Optional dict of parameter name → value pairs.
+
+        Invokes the ``on_invoke_action`` callback if set.
+        """
+        params = params or {}
+        logger.debug(
+            "vdSD %s: invokeDeviceAction id='%s' params=%s",
+            self._dsuid, action_id, params,
+        )
+        if self._on_invoke_action is not None:
+            import asyncio as _asyncio
+
+            result = self._on_invoke_action(self, action_id, params)
+            if _asyncio.iscoroutine(result):
                 await result
 
     # ---- model features management -----------------------------------
@@ -624,6 +697,166 @@ class Vdsd:
             self._schedule_auto_save_if_enabled()
         return output
 
+    # ---- device state management ------------------------------------
+
+    @property
+    def device_states(self) -> Dict[int, "DeviceState"]:
+        """All device states keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._device_states)
+
+    def add_device_state(self, st: "DeviceState") -> None:
+        """Register a :class:`DeviceState` with this vdSD.
+
+        The state is indexed by its ``dsIndex``.  Adding a state
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the state's owning vdSD is not this instance.
+        """
+        if st.vdsd is not self:
+            raise ValueError(
+                f"DeviceState belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {st.vdsd.dsuid})"
+            )
+        self._device_states[st.ds_index] = st
+        logger.debug(
+            "Added DeviceState[%d] '%s' to vdSD %s",
+            st.ds_index, st.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_device_state(
+        self, ds_index: int
+    ) -> Optional["DeviceState"]:
+        """Remove a device state by ``dsIndex``.
+
+        Returns the removed :class:`DeviceState` or ``None``.
+        """
+        st = self._device_states.pop(ds_index, None)
+        if st is not None:
+            self._schedule_auto_save_if_enabled()
+        return st
+
+    def get_device_state(
+        self, ds_index: int
+    ) -> Optional["DeviceState"]:
+        """Look up a device state by ``dsIndex``."""
+        return self._device_states.get(ds_index)
+
+    async def update_device_state(
+        self,
+        ds_index: int,
+        value: Union[str, int],
+        session: Optional["VdcSession"] = None,
+    ) -> None:
+        """Convenience: update the device state at *ds_index*.
+
+        Parameters
+        ----------
+        ds_index:
+            The state index to update.
+        value:
+            The new state value.
+        session:
+            Optional session override; defaults to the vdSD's
+            current session.
+
+        Raises
+        ------
+        KeyError
+            If no state is registered at *ds_index*.
+        """
+        st = self._device_states.get(ds_index)
+        if st is None:
+            raise KeyError(
+                f"No DeviceState at index {ds_index} on vdSD "
+                f"{self._dsuid}"
+            )
+        await st.update_value(value, session)
+
+    # ---- device property management ----------------------------------
+
+    @property
+    def device_properties(self) -> Dict[int, "DeviceProperty"]:
+        """All device properties keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._device_properties)
+
+    def add_device_property(self, prop: "DeviceProperty") -> None:
+        """Register a :class:`DeviceProperty` with this vdSD.
+
+        The property is indexed by its ``dsIndex``.  Adding a property
+        with a ``dsIndex`` that already exists replaces the previous
+        one.
+
+        Raises
+        ------
+        ValueError
+            If the property's owning vdSD is not this instance.
+        """
+        if prop.vdsd is not self:
+            raise ValueError(
+                f"DeviceProperty belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {prop.vdsd.dsuid})"
+            )
+        self._device_properties[prop.ds_index] = prop
+        logger.debug(
+            "Added DeviceProperty[%d] '%s' to vdSD %s",
+            prop.ds_index, prop.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_device_property(
+        self, ds_index: int
+    ) -> Optional["DeviceProperty"]:
+        """Remove a device property by ``dsIndex``.
+
+        Returns the removed :class:`DeviceProperty` or ``None``.
+        """
+        prop = self._device_properties.pop(ds_index, None)
+        if prop is not None:
+            self._schedule_auto_save_if_enabled()
+        return prop
+
+    def get_device_property(
+        self, ds_index: int
+    ) -> Optional["DeviceProperty"]:
+        """Look up a device property by ``dsIndex``."""
+        return self._device_properties.get(ds_index)
+
+    async def update_device_property(
+        self,
+        ds_index: int,
+        value: Union[float, int, str],
+        session: Optional["VdcSession"] = None,
+    ) -> None:
+        """Convenience: update the device property at *ds_index*.
+
+        Parameters
+        ----------
+        ds_index:
+            The property index to update.
+        value:
+            The new property value.
+        session:
+            Optional session override; defaults to the vdSD's
+            current session.
+
+        Raises
+        ------
+        KeyError
+            If no property is registered at *ds_index*.
+        """
+        prop = self._device_properties.get(ds_index)
+        if prop is None:
+            raise KeyError(
+                f"No DeviceProperty at index {ds_index} on vdSD "
+                f"{self._dsuid}"
+            )
+        await prop.update_value(value, session)
+
     # ---- device event management ------------------------------------
 
     @property
@@ -700,6 +933,199 @@ class Vdsd:
                 f"{self._dsuid}"
             )
         await evt.raise_event(session)
+
+    # ---- action description management (§4.5.2) ---------------------
+
+    @property
+    def action_descriptions(
+        self,
+    ) -> Dict[int, "DeviceActionDescription"]:
+        """All action descriptions keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._action_descriptions)
+
+    def add_device_action_description(
+        self, desc: "DeviceActionDescription"
+    ) -> None:
+        """Register a :class:`DeviceActionDescription` with this vdSD.
+
+        The description is indexed by its ``dsIndex``.  Adding one
+        with a ``dsIndex`` that already exists replaces the previous.
+
+        Raises
+        ------
+        ValueError
+            If the description's owning vdSD is not this instance.
+        """
+        if desc.vdsd is not self:
+            raise ValueError(
+                f"DeviceActionDescription belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {desc.vdsd.dsuid})"
+            )
+        self._action_descriptions[desc.ds_index] = desc
+        logger.debug(
+            "Added DeviceActionDescription[%d] '%s' to vdSD %s",
+            desc.ds_index, desc.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_device_action_description(
+        self, ds_index: int
+    ) -> Optional["DeviceActionDescription"]:
+        """Remove an action description by ``dsIndex``.
+
+        Returns the removed :class:`DeviceActionDescription` or ``None``.
+        """
+        desc = self._action_descriptions.pop(ds_index, None)
+        if desc is not None:
+            self._schedule_auto_save_if_enabled()
+        return desc
+
+    def get_device_action_description(
+        self, ds_index: int
+    ) -> Optional["DeviceActionDescription"]:
+        """Look up an action description by ``dsIndex``."""
+        return self._action_descriptions.get(ds_index)
+
+    # ---- standard action management (§4.5.3) ------------------------
+
+    @property
+    def standard_actions(self) -> Dict[int, "StandardAction"]:
+        """All standard actions keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._standard_actions)
+
+    def add_standard_action(self, std: "StandardAction") -> None:
+        """Register a :class:`StandardAction` with this vdSD.
+
+        The action is indexed by its ``dsIndex``.  Adding one
+        with a ``dsIndex`` that already exists replaces the previous.
+
+        Raises
+        ------
+        ValueError
+            If the action's owning vdSD is not this instance.
+        """
+        if std.vdsd is not self:
+            raise ValueError(
+                f"StandardAction belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {std.vdsd.dsuid})"
+            )
+        self._standard_actions[std.ds_index] = std
+        logger.debug(
+            "Added StandardAction[%d] '%s' to vdSD %s",
+            std.ds_index, std.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_standard_action(
+        self, ds_index: int
+    ) -> Optional["StandardAction"]:
+        """Remove a standard action by ``dsIndex``.
+
+        Returns the removed :class:`StandardAction` or ``None``.
+        """
+        std = self._standard_actions.pop(ds_index, None)
+        if std is not None:
+            self._schedule_auto_save_if_enabled()
+        return std
+
+    def get_standard_action(
+        self, ds_index: int
+    ) -> Optional["StandardAction"]:
+        """Look up a standard action by ``dsIndex``."""
+        return self._standard_actions.get(ds_index)
+
+    # ---- custom action management (§4.5.3) --------------------------
+
+    @property
+    def custom_actions(self) -> Dict[int, "CustomAction"]:
+        """All custom actions keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._custom_actions)
+
+    def add_custom_action(self, cust: "CustomAction") -> None:
+        """Register a :class:`CustomAction` with this vdSD.
+
+        The action is indexed by its ``dsIndex``.  Adding one
+        with a ``dsIndex`` that already exists replaces the previous.
+
+        Raises
+        ------
+        ValueError
+            If the action's owning vdSD is not this instance.
+        """
+        if cust.vdsd is not self:
+            raise ValueError(
+                f"CustomAction belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {cust.vdsd.dsuid})"
+            )
+        self._custom_actions[cust.ds_index] = cust
+        logger.debug(
+            "Added CustomAction[%d] '%s' to vdSD %s",
+            cust.ds_index, cust.name, self._dsuid,
+        )
+        self._schedule_auto_save_if_enabled()
+
+    def remove_custom_action(
+        self, ds_index: int
+    ) -> Optional["CustomAction"]:
+        """Remove a custom action by ``dsIndex``.
+
+        Returns the removed :class:`CustomAction` or ``None``.
+        """
+        cust = self._custom_actions.pop(ds_index, None)
+        if cust is not None:
+            self._schedule_auto_save_if_enabled()
+        return cust
+
+    def get_custom_action(
+        self, ds_index: int
+    ) -> Optional["CustomAction"]:
+        """Look up a custom action by ``dsIndex``."""
+        return self._custom_actions.get(ds_index)
+
+    # ---- dynamic action management (§4.5.3) -------------------------
+
+    @property
+    def dynamic_actions(self) -> Dict[int, "DynamicAction"]:
+        """All dynamic actions keyed by ``dsIndex`` (read-only view)."""
+        return dict(self._dynamic_actions)
+
+    def add_dynamic_action(self, dyn: "DynamicAction") -> None:
+        """Register a :class:`DynamicAction` with this vdSD.
+
+        The action is indexed by its ``dsIndex``.  Adding one
+        with a ``dsIndex`` that already exists replaces the previous.
+
+        Raises
+        ------
+        ValueError
+            If the action's owning vdSD is not this instance.
+        """
+        if dyn.vdsd is not self:
+            raise ValueError(
+                f"DynamicAction belongs to a different vdSD "
+                f"(expected {self._dsuid}, got {dyn.vdsd.dsuid})"
+            )
+        self._dynamic_actions[dyn.ds_index] = dyn
+        logger.debug(
+            "Added DynamicAction[%d] '%s' to vdSD %s",
+            dyn.ds_index, dyn.name, self._dsuid,
+        )
+        # Dynamic actions are transient — no auto-save.
+
+    def remove_dynamic_action(
+        self, ds_index: int
+    ) -> Optional["DynamicAction"]:
+        """Remove a dynamic action by ``dsIndex``.
+
+        Returns the removed :class:`DynamicAction` or ``None``.
+        """
+        return self._dynamic_actions.pop(ds_index, None)
+
+    def get_dynamic_action(
+        self, ds_index: int
+    ) -> Optional["DynamicAction"]:
+        """Look up a dynamic action by ``dsIndex``."""
+        return self._dynamic_actions.get(ds_index)
 
     def _schedule_auto_save_if_enabled(self) -> None:
         """Trigger auto-save if enabled."""
@@ -795,11 +1221,79 @@ class Vdsd:
                 for si in self._sensor_inputs.values()
             }
 
+        # ------------------------------------------------------------------
+        # SingleDevice extensions (§4.5 / §4.6 / §4.7)
+        # ------------------------------------------------------------------
+        # In p44-vdc, enableAsSingleDevice() always creates ALL
+        # SingleDevice containers together (deviceActions, dynamicActions,
+        # customActions, standardActions, states, events, properties).
+        # The vdSM may rely on the presence of the action description
+        # properties to recognise a device as a SingleDevice.  We
+        # therefore include empty action descriptions whenever ANY
+        # SingleDevice feature is defined.
+        has_single_device = bool(
+            self._device_states
+            or self._device_events
+            or self._device_properties
+            or self._action_descriptions
+            or self._standard_actions
+            or self._custom_actions
+            or self._dynamic_actions
+        )
+
+        if has_single_device:
+            # Action descriptions (§4.5.2) — always present for
+            # SingleDevice, even if empty.
+            props["deviceActionDescriptions"] = {
+                str(desc.ds_index): desc.get_description_properties()
+                for desc in self._action_descriptions.values()
+            } if self._action_descriptions else {}
+
+            # Standard actions (§4.5.3).
+            props["standardActions"] = {
+                str(std.ds_index): std.get_properties()
+                for std in self._standard_actions.values()
+            } if self._standard_actions else {}
+
+            # Custom actions (§4.5.3).
+            props["customActions"] = {
+                str(cust.ds_index): cust.get_properties()
+                for cust in self._custom_actions.values()
+            } if self._custom_actions else {}
+
+            # Dynamic device actions (§4.5.3).
+            props["dynamicDeviceActions"] = {
+                str(dyn.ds_index): dyn.get_properties()
+                for dyn in self._dynamic_actions.values()
+            } if self._dynamic_actions else {}
+
         # Device event descriptions (§4.7).
         if self._device_events:
             props["deviceEventDescriptions"] = {
                 str(evt.ds_index): evt.get_description_properties()
                 for evt in self._device_events.values()
+            }
+
+        # Device state descriptions & values (§4.6.1 / §4.6.2).
+        if self._device_states:
+            props["deviceStateDescriptions"] = {
+                str(st.ds_index): st.get_description_properties()
+                for st in self._device_states.values()
+            }
+            props["deviceStates"] = {
+                str(st.ds_index): st.get_state_properties()
+                for st in self._device_states.values()
+            }
+
+        # Device property descriptions & values (§4.6.3 / §4.6.4).
+        if self._device_properties:
+            props["devicePropertyDescriptions"] = {
+                str(prop.ds_index): prop.get_description_properties()
+                for prop in self._device_properties.values()
+            }
+            props["deviceProperties"] = {
+                str(prop.ds_index): prop.get_value_properties()
+                for prop in self._device_properties.values()
             }
 
         # Output component properties (§4.8).
@@ -909,6 +1403,43 @@ class Vdsd:
                 evt.get_property_tree()
                 for evt in self._device_events.values()
             ]
+
+        # Device states (description only; state values are volatile).
+        if self._device_states:
+            node["deviceStates"] = [
+                st.get_property_tree()
+                for st in self._device_states.values()
+            ]
+
+        # Device properties (description + value; both persisted).
+        if self._device_properties:
+            node["deviceProperties"] = [
+                prop.get_property_tree()
+                for prop in self._device_properties.values()
+            ]
+
+        # Action descriptions (§4.5.2) — template actions, persisted.
+        if self._action_descriptions:
+            node["actionDescriptions"] = [
+                desc.get_property_tree()
+                for desc in self._action_descriptions.values()
+            ]
+
+        # Standard actions (§4.5.3) — static, persisted.
+        if self._standard_actions:
+            node["standardActions"] = [
+                std.get_property_tree()
+                for std in self._standard_actions.values()
+            ]
+
+        # Custom actions (§4.5.3) — user-configured, persisted.
+        if self._custom_actions:
+            node["customActions"] = [
+                cust.get_property_tree()
+                for cust in self._custom_actions.values()
+            ]
+
+        # NOTE: Dynamic actions are transient and NOT persisted.
 
         # Output (description + settings; state is volatile).
         if self._output is not None:
@@ -1024,6 +1555,78 @@ class Vdsd:
                         )
                         self._device_events[idx] = evt
                     evt._apply_state(evt_state)
+
+            # Restore device states.
+            if "deviceStates" in state:
+                from pyDSvDCAPI.device_state import DeviceState
+                for st_state in state["deviceStates"]:
+                    idx = st_state.get("dsIndex", 0)
+                    st = self._device_states.get(idx)
+                    if st is None:
+                        st = DeviceState(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._device_states[idx] = st
+                    st._apply_state(st_state)
+
+            # Restore device properties.
+            if "deviceProperties" in state:
+                from pyDSvDCAPI.device_property import DeviceProperty
+                for prop_state in state["deviceProperties"]:
+                    idx = prop_state.get("dsIndex", 0)
+                    prop = self._device_properties.get(idx)
+                    if prop is None:
+                        prop = DeviceProperty(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._device_properties[idx] = prop
+                    prop._apply_state(prop_state)
+
+            # Restore action descriptions (§4.5.2).
+            if "actionDescriptions" in state:
+                from pyDSvDCAPI.actions import DeviceActionDescription
+                for desc_state in state["actionDescriptions"]:
+                    idx = desc_state.get("dsIndex", 0)
+                    desc = self._action_descriptions.get(idx)
+                    if desc is None:
+                        desc = DeviceActionDescription(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._action_descriptions[idx] = desc
+                    desc._apply_state(desc_state)
+
+            # Restore standard actions (§4.5.3).
+            if "standardActions" in state:
+                from pyDSvDCAPI.actions import StandardAction
+                for std_state in state["standardActions"]:
+                    idx = std_state.get("dsIndex", 0)
+                    std = self._standard_actions.get(idx)
+                    if std is None:
+                        std = StandardAction(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._standard_actions[idx] = std
+                    std._apply_state(std_state)
+
+            # Restore custom actions (§4.5.3).
+            if "customActions" in state:
+                from pyDSvDCAPI.actions import CustomAction
+                for cust_state in state["customActions"]:
+                    idx = cust_state.get("dsIndex", 0)
+                    cust = self._custom_actions.get(idx)
+                    if cust is None:
+                        cust = CustomAction(
+                            vdsd=self,
+                            ds_index=idx,
+                        )
+                        self._custom_actions[idx] = cust
+                    cust._apply_state(cust_state)
+
+            # NOTE: Dynamic actions are transient — not restored.
 
             # Restore output.
             if "output" in state:

@@ -11,6 +11,7 @@ from pyDSvDCAPI.property_handling import (
     build_get_property_response,
     dict_to_elements,
     elements_to_dict,
+    expand_setproperty_wildcards,
     match_query,
 )
 
@@ -101,6 +102,58 @@ class TestDictToElements:
         elems = dict_to_elements({"a": "x", "b": 1, "c": True})
         assert len(elems) == 3
 
+    def test_integer_keys_converted_to_strings(self):
+        """Integer dict keys must be converted to strings for protobuf."""
+        elems = dict_to_elements({0: "Off", 1: "Running", 2: "Error"})
+        assert len(elems) == 3
+        names = {e.name for e in elems}
+        assert names == {"0", "1", "2"}
+        for e in elems:
+            assert isinstance(e.name, str)
+
+    def test_nested_dict_with_integer_keys(self):
+        """Options-style nested dict with integer keys must serialize."""
+        elems = dict_to_elements({
+            "options": {0: "Off", 1: "Initializing", 2: "Running", 3: "Error"},
+        })
+        assert len(elems) == 1
+        opt = elems[0]
+        assert opt.name == "options"
+        assert len(opt.elements) == 4
+        sub_map = {e.name: e.value.v_string for e in opt.elements}
+        assert sub_map == {
+            "0": "Off",
+            "1": "Initializing",
+            "2": "Running",
+            "3": "Error",
+        }
+
+    def test_device_state_description_structure(self):
+        """Full deviceStateDescriptions structure with name-keyed entries."""
+        props = {
+            "deviceStateDescriptions": {
+                "operatingState": {
+                    "name": "operatingState",
+                    "options": {0: "Off", 1: "Running"},
+                    "description": "Operating state",
+                }
+            }
+        }
+        elems = dict_to_elements(props)
+        assert len(elems) == 1
+        dsd = elems[0]
+        assert dsd.name == "deviceStateDescriptions"
+        # Name-keyed sub-element
+        assert len(dsd.elements) == 1
+        entry = dsd.elements[0]
+        assert entry.name == "operatingState"
+        sub_names = {e.name for e in entry.elements}
+        assert {"name", "options", "description"} == sub_names
+        # Find options and verify
+        opts_elem = next(e for e in entry.elements if e.name == "options")
+        opt_map = {e.name: e.value.v_string for e in opts_elem.elements}
+        assert opt_map == {"0": "Off", "1": "Running"}
+
 
 # ---------------------------------------------------------------------------
 # elements_to_dict (inverse)
@@ -142,14 +195,20 @@ class TestElementsToDict:
         d = elements_to_dict(elems)
         assert d == {"caps": {"metering": False}}
 
-    def test_empty_name_skipped(self):
+    def test_empty_name_preserved_as_wildcard(self):
+        """Empty-name elements are stored under the '' key (wildcard).
+
+        Per §7.1.2, an empty name in setProperty means "all elements at
+        this level".  elements_to_dict must preserve these so that the
+        setProperty handler can expand them.
+        """
         elems = [
             pb.PropertyElement(
                 name="", value=pb.PropertyValue(v_string="x")
             ),
         ]
         d = elements_to_dict(elems)
-        assert d == {}
+        assert d == {"": "x"}
 
     def test_round_trip(self):
         original = {"name": "Test", "zoneID": 5, "active": True}
@@ -240,6 +299,39 @@ class TestMatchQuery:
         assert result[0].value.v_bool is True
         # Should NOT be in v_int64.
         assert not result[0].value.HasField("v_int64")
+
+    def test_match_query_with_int_keyed_options(self):
+        """match_query must handle nested dicts with integer keys."""
+        props = {
+            "deviceStateDescriptions": {
+                "0": {
+                    "name": "operatingState",
+                    "options": {
+                        0: "Off",
+                        1: "Initializing",
+                        2: "Running",
+                        3: "Error",
+                    },
+                    "description": "Operating state",
+                }
+            }
+        }
+        query = _make_query("deviceStateDescriptions")
+        result = match_query(props, query)
+        assert len(result) == 1
+        dsd = result[0]
+        assert dsd.name == "deviceStateDescriptions"
+        # Drill into index "0" → options
+        idx0 = dsd.elements[0]
+        assert idx0.name == "0"
+        opts_elem = next(e for e in idx0.elements if e.name == "options")
+        opt_map = {e.name: e.value.v_string for e in opts_elem.elements}
+        assert opt_map == {
+            "0": "Off",
+            "1": "Initializing",
+            "2": "Running",
+            "3": "Error",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -457,3 +549,72 @@ class TestVdcHostPropertyDispatch:
 
         await host._dispatch_message(mock_session, msg)
         assert len(received) == 1
+
+
+# ---------------------------------------------------------------------------
+# expand_setproperty_wildcards
+# ---------------------------------------------------------------------------
+
+
+class TestExpandSetpropertyWildcards:
+    """Tests for the setProperty wildcard expansion helper (§7.1.2)."""
+
+    def test_no_wildcard_passthrough(self):
+        """Without a '' key, the dict is returned unchanged."""
+        d = {"0": {"value": 10}, "1": {"value": 20}}
+        result = expand_setproperty_wildcards(d, [0, 1, 2])
+        assert result == {"0": {"value": 10}, "1": {"value": 20}}
+
+    def test_wildcard_expands_to_missing_keys(self):
+        """The '' key expands to all existing keys not explicitly set."""
+        d = {"": {"dontCare": True}}
+        result = expand_setproperty_wildcards(d, [0, 1, 2])
+        assert "" not in result
+        assert result == {
+            "0": {"dontCare": True},
+            "1": {"dontCare": True},
+            "2": {"dontCare": True},
+        }
+
+    def test_explicit_overrides_wildcard(self):
+        """Explicitly set keys take precedence over the wildcard."""
+        d = {"": {"value": 0.0}, "1": {"value": 50.0}}
+        result = expand_setproperty_wildcards(d, [0, 1, 2])
+        assert result["0"] == {"value": 0.0}
+        assert result["1"] == {"value": 50.0}  # explicit wins
+        assert result["2"] == {"value": 0.0}
+
+    def test_empty_all_keys(self):
+        """With no existing keys, wildcard produces empty result."""
+        d = {"": {"dontCare": True}}
+        result = expand_setproperty_wildcards(d, [])
+        assert result == {}
+
+    def test_wildcard_with_string_keys(self):
+        """String keys in all_keys work correctly."""
+        d = {"": 42}
+        result = expand_setproperty_wildcards(d, ["a", "b"])
+        assert result == {"a": 42, "b": 42}
+
+    def test_round_trip_with_elements_to_dict(self):
+        """A protobuf wildcard element is preserved and expandable."""
+        # Simulate a setProperty with a wildcard: scenes { "" { dontCare: true } }
+        inner = pb.PropertyElement(
+            name="dontCare",
+            value=pb.PropertyValue(v_bool=True),
+        )
+        wildcard = pb.PropertyElement(name="")
+        wildcard.elements.append(inner)
+        scenes = pb.PropertyElement(name="scenes")
+        scenes.elements.append(wildcard)
+
+        d = elements_to_dict([scenes])
+        assert "" in d["scenes"]
+        expanded = expand_setproperty_wildcards(
+            d["scenes"], [0, 5, 14]
+        )
+        assert expanded == {
+            "0": {"dontCare": True},
+            "5": {"dontCare": True},
+            "14": {"dontCare": True},
+        }

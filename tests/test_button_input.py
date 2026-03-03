@@ -553,9 +553,9 @@ class TestButtonInputPushNotifications:
         await btn.update_click(ButtonClickType.CLICK_1X, value=False)
 
         msg = session.send_notification.call_args[0][0]
-        assert msg.type == pb.VDC_SEND_PUSH_PROPERTY
+        assert msg.type == pb.VDC_SEND_PUSH_NOTIFICATION
         props = elements_to_dict(
-            msg.vdc_send_push_property.properties
+            msg.vdc_send_push_notification.changedproperties
         )
         assert "buttonInputStates" in props
         state = props["buttonInputStates"]["0"]
@@ -576,7 +576,7 @@ class TestButtonInputPushNotifications:
 
         msg = session.send_notification.call_args[0][0]
         props = elements_to_dict(
-            msg.vdc_send_push_property.properties
+            msg.vdc_send_push_notification.changedproperties
         )
         state = props["buttonInputStates"]["0"]
         assert state["actionId"] == 42
@@ -713,7 +713,7 @@ class TestButtonInputPersistence:
             button_element_id=ButtonElementID.LEFT,
             group=3,
             function=ButtonFunction.EXTENDED_1,
-            mode=ButtonMode.TWO_WAY_UP_PAIRED_1,
+            mode=ButtonMode.TWO_WAY_DOWN_PAIRED_1,
             channel=100,
             sets_local_priority=True,
             calls_present=True,
@@ -731,7 +731,7 @@ class TestButtonInputPersistence:
         assert restored.button_element_id == ButtonElementID.LEFT
         assert restored.group == 3
         assert restored.function == ButtonFunction.EXTENDED_1
-        assert restored.mode == ButtonMode.TWO_WAY_UP_PAIRED_1
+        assert restored.mode == ButtonMode.TWO_WAY_DOWN_PAIRED_1
         assert restored.channel == 100
         assert restored.sets_local_priority is True
         assert restored.calls_present is True

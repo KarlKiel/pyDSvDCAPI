@@ -3,7 +3,7 @@
 A :class:`DeviceEvent` models one stateless event on a virtual device.
 Unlike inputs or sensors, device events carry **no state** — they
 represent one-shot occurrences that are pushed to the vdSM via
-``VDC_SEND_PUSH_PROPERTY`` with ``deviceevents`` payloads.
+``VDC_SEND_PUSH_NOTIFICATION`` with ``deviceevents`` payloads.
 
 Each event owns a single property group visible to the vdSM:
 
@@ -19,10 +19,9 @@ Raising events
 
 The physical device fires events via :meth:`DeviceEvent.raise_event`.
 When the owning vdSD is announced and a session is active, the library
-sends a ``VDC_SEND_PUSH_PROPERTY`` notification to the vdSM carrying
+sends a ``VDC_SEND_PUSH_NOTIFICATION`` notification to the vdSM carrying
 the ``deviceevents`` payload (the ``deviceevents`` field of the
-``vdc_SendPushNotification`` message, encoded via wire-compatible
-``MergeFromString`` into ``vdc_SendPushProperty``).
+``vdc_SendPushNotification`` message).
 
 Persistence
 ~~~~~~~~~~~
@@ -137,15 +136,18 @@ class DeviceEvent:
     # ---- property dicts ----------------------------------------------
 
     def get_description_properties(self) -> Dict[str, Any]:
-        """Return **deviceEventDescriptions** properties.
+        """Return **deviceEventDescriptions** properties (§4.7.1).
 
-        Returns
-        -------
-        dict
-            ``{"name": ..., "description": ...}``  — ``description``
-            is omitted when ``None``.
+        Format::
+
+            {"name": "myEvent", "description": "..."}  # desc optional
+
+        Keys in the parent dict are numeric string indices
+        (``str(ds_index)``).  The ``name`` field identifies the event.
         """
-        props: Dict[str, Any] = {"name": self._name}
+        props: Dict[str, Any] = {
+            "name": self._name,
+        }
         if self._description is not None:
             props["description"] = self._description
         return props
@@ -194,24 +196,14 @@ class DeviceEvent:
             )
             return
 
-        # Build a vdc_SendPushNotification and populate deviceevents.
-        notif = pb.vdc_SendPushNotification()
-        notif.dSUID = str(self._vdsd.dsuid)
-
-        # Each raised event is a PropertyElement keyed by index.
-        event_elem = pb.PropertyElement()
-        event_elem.name = str(self._ds_index)
-        notif.deviceevents.append(event_elem)
-
-        # Wire the notification bytes into the Message's
-        # vdc_send_push_property field.  Field 3 (deviceevents) is
-        # preserved as an unknown field in vdc_SendPushProperty but
-        # decoded correctly by the vdSM which uses the newer schema.
         msg = pb.Message()
-        msg.type = pb.VDC_SEND_PUSH_PROPERTY
-        msg.vdc_send_push_property.MergeFromString(
-            notif.SerializeToString()
-        )
+        msg.type = pb.VDC_SEND_PUSH_NOTIFICATION
+        msg.vdc_send_push_notification.dSUID = str(self._vdsd.dsuid)
+
+        # Each raised event is a PropertyElement keyed by name.
+        event_elem = pb.PropertyElement()
+        event_elem.name = self._name
+        msg.vdc_send_push_notification.deviceevents.append(event_elem)
 
         try:
             await session.send_notification(msg)

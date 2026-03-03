@@ -1158,10 +1158,10 @@ class ButtonInput:
         }
 
         msg = pb.Message()
-        msg.type = pb.VDC_SEND_PUSH_PROPERTY
-        msg.vdc_send_push_property.dSUID = str(self._vdsd.dsuid)
+        msg.type = pb.VDC_SEND_PUSH_NOTIFICATION
+        msg.vdc_send_push_notification.dSUID = str(self._vdsd.dsuid)
         for elem in dict_to_elements(push_tree):
-            msg.vdc_send_push_property.properties.append(elem)
+            msg.vdc_send_push_notification.changedproperties.append(elem)
 
         try:
             await session.send_notification(msg)

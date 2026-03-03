@@ -952,12 +952,19 @@ async def main() -> None:
         await r_device.vanish(session2)
         assert not r_device.is_announced
         logger.info("Device vanished.")
+        # Allow the vdSM to process the vanish notifications before
+        # we tear down the connection.
         await asyncio.sleep(2)
     else:
         logger.warning("Session not active — cannot vanish cleanly.")
 
+    # host.stop() now unregisters the DNS-SD/Avahi service *before*
+    # closing the TCP session, so the vdSM sees the service disappear
+    # and stops attempting reconnections.
     await host2.stop()
     logger.info("VdcHost stopped.")
+    # Give the network a moment for the Avahi goodbye to propagate.
+    await asyncio.sleep(2)
 
     # Delete persistence files.
     if host2._store is not None:

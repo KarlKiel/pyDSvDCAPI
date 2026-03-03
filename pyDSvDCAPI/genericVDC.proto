@@ -1,0 +1,322 @@
+syntax = "proto2";
+
+message vdsm_RequestHello {
+    optional string dSUID = 1;
+    optional uint32 api_version = 2;
+}
+
+message vdc_ResponseHello {
+    optional string dSUID = 1;
+}
+
+message vdc_SendAnnounceDevice {
+    optional string dSUID = 1;
+    optional string vdc_dSUID = 2;
+}
+
+message vdc_SendAnnounceVdc {
+    optional string dSUID = 1;
+}
+
+message vdc_SendVanish {
+    optional string dSUID = 1;
+}
+
+message vdc_SendIdentify {
+    optional string dSUID = 1;
+}
+
+message vdsm_SendBye {
+    optional string dSUID = 1;
+}
+
+message vdsm_SendRemove {
+    optional string dSUID = 1;
+}
+
+// PropertyValue carries a single typed value.
+// An empty PropertyValue (no fields set) represents an explicit NULL —
+// used in getProperty responses when a property exists but currently
+// has no value (§7.1.1).
+message PropertyValue {
+    optional bool v_bool = 1;
+    optional uint64 v_uint64 = 2;
+    optional int64 v_int64 = 3;
+    optional double v_double = 4;
+    optional string v_string = 5;
+    optional bytes v_bytes = 6;
+}
+
+// PropertyElement is the fundamental building block of the vDC API
+// property tree.  It is used across all property-related messages:
+// getProperty queries/responses, setProperty requests, pushProperty
+// notifications, and GenericRequest params.
+//
+// General rules (§7.1.1, valid for ALL property tree communications):
+//
+// - 'name' identifies the property at that tree level.
+// - An empty 'name' acts as a WILDCARD meaning "all properties at
+//   this level".
+// - In getProperty QUERIES: elements carry names only (no values).
+//   If the wildcard is the last element on a branch, deeper levels
+//   are returned too.
+// - In getProperty RESPONSES: the tree mirrors the query structure.
+//   Wildcards expand to all matching sub-properties.  Unknown or
+//   nonexistent properties are silently omitted (no element).
+//   Properties that exist but have no value return an explicit NULL
+//   (a PropertyValue with no fields set).
+// - In setProperty REQUESTS: elements carry names and values.
+//   A wildcard (empty name) means "set all elements at this level
+//   to the same value" (e.g. all scenes, all inputs).
+// - In pushProperty NOTIFICATIONS: elements carry names and values
+//   representing the pushed/changed state.
+message PropertyElement {
+    optional string name  = 1;
+    optional PropertyValue value = 2;
+    repeated PropertyElement elements = 3;
+}
+
+// getProperty (§7.1.1) — vdSM asks for property values.
+// 'query' is a tree of PropertyElements with names only (no values).
+// Empty name = wildcard; wildcard as last on branch = return deeper
+// levels too.  Unknown properties are omitted from the response.
+// Existing properties with no current value return explicit NULL.
+message vdsm_RequestGetProperty {
+    optional string dSUID = 1;
+    repeated PropertyElement query = 2;
+}
+
+// getProperty response — mirrors the query tree structure.
+// Wildcards in the query expand to all matching sub-properties.
+// See §7.1.1 for the full response contract.
+message vdc_ResponseGetProperty {
+    repeated PropertyElement properties = 1;
+}
+
+// setProperty (§7.1.2) — vdSM writes property values.
+// 'properties' is a tree of PropertyElements with names AND values.
+// Empty name = wildcard = "set all elements at this level to this
+// value" (e.g. all scenes, all inputs).
+// Expects generic response (ERR_OK on success).
+message vdsm_RequestSetProperty {
+    optional string dSUID = 1;
+    repeated PropertyElement properties = 2;
+}
+
+// expects generic response, new in API v2c
+// 'params' carries PropertyElement trees following the same general
+// property element conventions (§7.1.1).
+message vdsm_RequestGenericRequest {
+    optional string dSUID = 1;
+    optional string methodname = 2;
+    repeated PropertyElement params = 3;
+}
+
+message vdsm_SendPing {
+    optional string dSUID = 1;
+}
+
+message vdc_SendPong {
+    optional string dSUID = 1;
+}
+
+// pushProperty (§7.1.3) — vDC pushes property changes to vdSM.
+// 'changedproperties' is a tree of PropertyElements with names and
+// values representing the changed/pushed state.  Same general tree
+// conventions as getProperty responses (§7.1.1) apply.
+// 'deviceevents' carries device event notifications (API v2c+).
+message vdc_SendPushNotification { // formerly named "pushProperty"
+    optional string dSUID = 1;
+    repeated PropertyElement changedproperties = 2;
+    repeated PropertyElement deviceevents = 3; // new in API v2c
+}
+
+message vdsm_NotificationCallScene {
+    repeated string dSUID = 1;
+    optional int32 scene = 2;
+    optional bool force = 3;
+    optional int32 group = 4;
+    optional int32 zone_id = 5;
+}
+
+message vdsm_NotificationSaveScene {
+    repeated string dSUID = 1;
+    optional int32 scene = 2;
+    optional int32 group = 3;
+    optional int32 zone_id = 4;
+}
+
+message vdsm_NotificationUndoScene {
+    repeated string dSUID = 1;
+    optional int32 scene = 2;
+    optional int32 group = 3;
+    optional int32 zone_id = 4;
+}
+
+message vdsm_NotificationSetLocalPrio {
+    repeated string dSUID = 1;
+    optional int32 scene = 2;
+    optional int32 group = 3;
+    optional int32 zone_id = 4;
+}
+
+message vdsm_NotificationCallMinScene {
+    repeated string dSUID = 1;
+    optional int32 scene = 2;
+    optional int32 group = 3;
+    optional int32 zone_id = 4;
+}
+
+message vdsm_NotificationIdentify {
+    repeated string dSUID = 1;
+    optional int32 group = 2;
+    optional int32 zone_id = 3;
+}
+
+message vdsm_NotificationSetControlValue {
+    repeated string dSUID = 1;
+    optional string name = 2;
+    optional double value = 3;
+    optional int32 group = 4;
+    optional int32 zone_id = 5;
+}
+
+message vdsm_NotificationDimChannel {
+    repeated string dSUID = 1;
+    optional int32 channel = 2;
+    optional int32 mode = 3;
+    optional int32 area = 4;
+    optional int32 group = 5;
+    optional int32 zone_id = 6;
+    optional string channelId = 7; // new in API v3
+}
+
+message vdsm_NotificationSetOutputChannelValue {
+    repeated string dSUID = 1;
+    optional bool apply_now = 2 [ default = true ];
+    optional int32 channel = 3;
+    optional double value = 4;
+    optional string channelId = 5; // new in API v3
+}
+enum Type {
+    GENERIC_RESPONSE = 1;
+
+    VDSM_REQUEST_HELLO = 2;
+    VDC_RESPONSE_HELLO = 3;
+
+    VDSM_REQUEST_GET_PROPERTY = 4;
+    VDC_RESPONSE_GET_PROPERTY = 5;
+
+    VDSM_REQUEST_SET_PROPERTY = 6;
+    VDSM_REQUEST_GENERIC_REQUEST = 26;  // new in API v2c
+
+    VDSM_SEND_PING = 8;
+    VDC_SEND_PONG = 9;
+    VDC_SEND_ANNOUNCE_DEVICE = 10;
+    VDC_SEND_VANISH = 11;
+    VDC_SEND_PUSH_NOTIFICATION = 12;
+    VDSM_SEND_REMOVE = 13;
+    VDSM_SEND_BYE = 14;
+
+    
+    VDSM_NOTIFICATION_CALL_SCENE = 15;
+    VDSM_NOTIFICATION_SAVE_SCENE = 16;
+    VDSM_NOTIFICATION_UNDO_SCENE = 17;
+    VDSM_NOTIFICATION_SET_LOCAL_PRIO = 18;
+    VDSM_NOTIFICATION_CALL_MIN_SCENE = 19;
+    VDSM_NOTIFICATION_IDENTIFY = 20;
+    VDSM_NOTIFICATION_SET_CONTROL_VALUE = 21;
+    VDSM_NOTIFICATION_DIM_CHANNEL = 24; // new in API v2
+    VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE = 25;
+
+    VDC_SEND_IDENTIFY = 22;
+    VDC_SEND_ANNOUNCE_VDC = 23;
+}
+
+message Message {
+    required Type type = 1 [ default = GENERIC_RESPONSE ];
+    optional uint32 message_id = 2 [ default = 0 ];
+    optional GenericResponse generic_response = 3;
+
+    // could not be solved via extensions because protobuf-c does
+    // not support extensions yet
+
+    // requests that expect specific responses
+    optional vdsm_RequestHello vdsm_request_hello = 100;
+    optional vdc_ResponseHello vdc_response_hello = 101;
+
+    optional vdsm_RequestGetProperty vdsm_request_get_property = 102;
+    optional vdc_ResponseGetProperty vdc_response_get_property = 103;
+
+    // expects generic response
+    optional vdsm_RequestSetProperty vdsm_request_set_property = 104;
+    optional vdsm_RequestGenericRequest vdsm_request_generic_request = 123; // new in API v2c   
+
+    // requests that only expect a response in case of error
+    optional vdsm_SendPing vdsm_send_ping = 105;
+    optional vdc_SendPong vdc_send_pong = 106;
+    optional vdc_SendAnnounceDevice vdc_send_announce_device = 107;
+    optional vdc_SendVanish vdc_send_vanish = 108;
+    optional vdc_SendPushNotification vdc_send_push_notification = 109;
+    optional vdsm_SendRemove vdsm_send_remove = 110;
+    optional vdsm_SendBye vdsm_send_bye = 111;
+
+    // notifications do not expect any response, not even error responses
+    optional vdsm_NotificationCallScene vdsm_send_call_scene = 112;
+    optional vdsm_NotificationSaveScene vdsm_send_save_scene = 113;
+    optional vdsm_NotificationUndoScene vdsm_send_undo_scene = 114;
+    optional vdsm_NotificationSetLocalPrio vdsm_send_set_local_prio = 115;
+    optional vdsm_NotificationCallMinScene vdsm_send_call_min_scene = 116;
+    optional vdsm_NotificationIdentify vdsm_send_identify = 117;
+    optional vdsm_NotificationSetControlValue vdsm_send_set_control_value = 118;
+    optional vdsm_NotificationDimChannel vdsm_send_dim_channel = 121;
+
+    optional vdsm_NotificationSetOutputChannelValue vdsm_send_output_channel_value = 122;
+    optional vdc_SendIdentify vdc_send_identify = 119;
+    optional vdc_SendAnnounceVdc vdc_send_announce_vdc = 120;
+}
+
+enum ResultCode {
+    ERR_OK = 0;
+    ERR_MESSAGE_UNKNOWN = 1;
+    ERR_INCOMPATIBLE_API = 2;
+    ERR_SERVICE_NOT_AVAILABLE = 3;
+    ERR_INSUFFICIENT_STORAGE = 4;
+    ERR_FORBIDDEN = 5;
+    ERR_NOT_IMPLEMENTED = 6;
+    ERR_NO_CONTENT_FOR_ARRAY = 7;
+    ERR_INVALID_VALUE_TYPE = 8;
+    ERR_MISSING_SUBMESSAGE = 9;
+    ERR_MISSING_DATA = 10;
+    ERR_NOT_FOUND = 11;
+    ERR_NOT_AUTHORIZED = 12;
+}
+
+message GenericResponse {
+    required ResultCode code = 1 [ default = ERR_OK ];
+    optional string description = 2;
+
+    /// How shall the caller recover?
+    optional ErrorType errorType = 3 [ default = FAILED ];
+
+    /// Error message intended for user.
+    /// Frontends shall present a generic error message to user if empty.
+    /// Can be multiline with markdown formatting
+    /// Message will be translated in dss using vdc catalog.
+    optional string userMessageToBeTranslated = 4;
+}
+
+enum ErrorType {
+
+    // Something went wrong. This is the usual error type.
+    FAILED = 0;
+
+    /// The call failed because of a temporary lack of resources.
+    OVERLOADED = 1;
+
+    /// The call required communication over a connection that has been lost.
+    DISCONNECTED = 2;
+
+    // The requested method is not implemented.
+    UNIMPLEMENTED = 3;
+}

@@ -88,6 +88,18 @@ MessageCallback = Callable[
     Awaitable[Optional[pb.Message]],
 ]
 
+#: Signature for the hello-completed callback.
+#:
+#: Called when the hello handshake completes and the session transitions
+#: to ``ACTIVE``.  The callback receives the session and may perform
+#: async work (e.g. re-announcing vDCs and devices).  It is scheduled
+#: via :func:`asyncio.create_task` so it does not block the session
+#: message loop.
+HelloCallback = Callable[
+    ["VdcSession"],
+    Awaitable[None],
+]
+
 
 # ---------------------------------------------------------------------------
 # VdcSession
@@ -114,10 +126,12 @@ class VdcSession:
         connection: VdcConnection,
         host_dsuid: str,
         on_message: Optional[MessageCallback] = None,
+        on_hello: Optional[HelloCallback] = None,
     ) -> None:
         self._conn = connection
         self._host_dsuid = host_dsuid
         self._on_message = on_message
+        self._on_hello = on_hello
 
         self._state = SessionState.AWAITING_HELLO
         self._vdsm_dsuid: Optional[str] = None
@@ -365,6 +379,24 @@ class VdcSession:
         await self._conn.send(response)
 
         logger.info("Session established with vdSM %s", vdsm_dsuid)
+
+        # Notify the host that the session is ready.  The callback is
+        # scheduled as a separate task so that it does not block the
+        # session message loop (the callback typically re-announces
+        # vDCs and devices, which requires sending requests and waiting
+        # for responses dispatched by this same loop).
+        if self._on_hello is not None:
+            asyncio.create_task(
+                self._invoke_on_hello(),
+                name=f"on_hello-{vdsm_dsuid}",
+            )
+
+    async def _invoke_on_hello(self) -> None:
+        """Wrapper that invokes *_on_hello* with error handling."""
+        try:
+            await self._on_hello(self)
+        except Exception:  # noqa: BLE001
+            logger.exception("Error in on_hello callback")
 
     # ---- ping / pong -------------------------------------------------
 

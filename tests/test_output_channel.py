@@ -690,7 +690,7 @@ class TestDeviceToVdsmPush:
 
         session.send_notification.assert_called_once()
         sent_msg = session.send_notification.call_args[0][0]
-        assert sent_msg.type == pb.VDC_SEND_PUSH_PROPERTY
+        assert sent_msg.type == pb.VDC_SEND_PUSH_NOTIFICATION
 
     @pytest.mark.asyncio
     async def test_no_push_when_push_changes_disabled(self):
@@ -732,7 +732,7 @@ class TestDeviceToVdsmPush:
         await ch.update_value(42.0)
 
         sent_msg = session.send_notification.call_args[0][0]
-        assert sent_msg.vdc_send_push_property.dSUID == str(vdsd.dsuid)
+        assert sent_msg.vdc_send_push_notification.dSUID == str(vdsd.dsuid)
 
 
 # ===========================================================================

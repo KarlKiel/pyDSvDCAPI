@@ -1,480 +1,378 @@
-"""Type stubs for the generated genericVDC protobuf module."""
+from google.protobuf.internal import containers as _containers
+from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
+from google.protobuf import descriptor as _descriptor
+from google.protobuf import message as _message
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
-from typing import Optional
+DESCRIPTOR: _descriptor.FileDescriptor
+DISCONNECTED: ErrorType
+ERR_FORBIDDEN: ResultCode
+ERR_INCOMPATIBLE_API: ResultCode
+ERR_INSUFFICIENT_STORAGE: ResultCode
+ERR_INVALID_VALUE_TYPE: ResultCode
+ERR_MESSAGE_UNKNOWN: ResultCode
+ERR_MISSING_DATA: ResultCode
+ERR_MISSING_SUBMESSAGE: ResultCode
+ERR_NOT_AUTHORIZED: ResultCode
+ERR_NOT_FOUND: ResultCode
+ERR_NOT_IMPLEMENTED: ResultCode
+ERR_NO_CONTENT_FOR_ARRAY: ResultCode
+ERR_OK: ResultCode
+ERR_SERVICE_NOT_AVAILABLE: ResultCode
+FAILED: ErrorType
+GENERIC_RESPONSE: Type
+OVERLOADED: ErrorType
+UNIMPLEMENTED: ErrorType
+VDC_RESPONSE_GET_PROPERTY: Type
+VDC_RESPONSE_HELLO: Type
+VDC_SEND_ANNOUNCE_DEVICE: Type
+VDC_SEND_ANNOUNCE_VDC: Type
+VDC_SEND_IDENTIFY: Type
+VDC_SEND_PONG: Type
+VDC_SEND_PUSH_NOTIFICATION: Type
+VDC_SEND_VANISH: Type
+VDSM_NOTIFICATION_CALL_MIN_SCENE: Type
+VDSM_NOTIFICATION_CALL_SCENE: Type
+VDSM_NOTIFICATION_DIM_CHANNEL: Type
+VDSM_NOTIFICATION_IDENTIFY: Type
+VDSM_NOTIFICATION_SAVE_SCENE: Type
+VDSM_NOTIFICATION_SET_CONTROL_VALUE: Type
+VDSM_NOTIFICATION_SET_LOCAL_PRIO: Type
+VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE: Type
+VDSM_NOTIFICATION_UNDO_SCENE: Type
+VDSM_REQUEST_GENERIC_REQUEST: Type
+VDSM_REQUEST_GET_PROPERTY: Type
+VDSM_REQUEST_HELLO: Type
+VDSM_REQUEST_SET_PROPERTY: Type
+VDSM_SEND_BYE: Type
+VDSM_SEND_PING: Type
+VDSM_SEND_REMOVE: Type
 
-from google.protobuf.descriptor import FileDescriptor
-from google.protobuf.internal.containers import RepeatedCompositeFieldContainer, RepeatedScalarFieldContainer
-from google.protobuf.message import Message as _Message
+class GenericResponse(_message.Message):
+    __slots__ = ["code", "description", "errorType", "userMessageToBeTranslated"]
+    CODE_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    ERRORTYPE_FIELD_NUMBER: _ClassVar[int]
+    USERMESSAGETOBETRANSLATED_FIELD_NUMBER: _ClassVar[int]
+    code: ResultCode
+    description: str
+    errorType: ErrorType
+    userMessageToBeTranslated: str
+    def __init__(self, code: _Optional[_Union[ResultCode, str]] = ..., description: _Optional[str] = ..., errorType: _Optional[_Union[ErrorType, str]] = ..., userMessageToBeTranslated: _Optional[str] = ...) -> None: ...
 
-DESCRIPTOR: FileDescriptor
+class Message(_message.Message):
+    __slots__ = ["generic_response", "message_id", "type", "vdc_response_get_property", "vdc_response_hello", "vdc_send_announce_device", "vdc_send_announce_vdc", "vdc_send_identify", "vdc_send_pong", "vdc_send_push_notification", "vdc_send_vanish", "vdsm_request_generic_request", "vdsm_request_get_property", "vdsm_request_hello", "vdsm_request_set_property", "vdsm_send_bye", "vdsm_send_call_min_scene", "vdsm_send_call_scene", "vdsm_send_dim_channel", "vdsm_send_identify", "vdsm_send_output_channel_value", "vdsm_send_ping", "vdsm_send_remove", "vdsm_send_save_scene", "vdsm_send_set_control_value", "vdsm_send_set_local_prio", "vdsm_send_undo_scene"]
+    GENERIC_RESPONSE_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_ID_FIELD_NUMBER: _ClassVar[int]
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    VDC_RESPONSE_GET_PROPERTY_FIELD_NUMBER: _ClassVar[int]
+    VDC_RESPONSE_HELLO_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_ANNOUNCE_DEVICE_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_ANNOUNCE_VDC_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_IDENTIFY_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_PONG_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_PUSH_NOTIFICATION_FIELD_NUMBER: _ClassVar[int]
+    VDC_SEND_VANISH_FIELD_NUMBER: _ClassVar[int]
+    VDSM_REQUEST_GENERIC_REQUEST_FIELD_NUMBER: _ClassVar[int]
+    VDSM_REQUEST_GET_PROPERTY_FIELD_NUMBER: _ClassVar[int]
+    VDSM_REQUEST_HELLO_FIELD_NUMBER: _ClassVar[int]
+    VDSM_REQUEST_SET_PROPERTY_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_BYE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_CALL_MIN_SCENE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_CALL_SCENE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_DIM_CHANNEL_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_IDENTIFY_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_OUTPUT_CHANNEL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_PING_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_REMOVE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_SAVE_SCENE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_SET_CONTROL_VALUE_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_SET_LOCAL_PRIO_FIELD_NUMBER: _ClassVar[int]
+    VDSM_SEND_UNDO_SCENE_FIELD_NUMBER: _ClassVar[int]
+    generic_response: GenericResponse
+    message_id: int
+    type: Type
+    vdc_response_get_property: vdc_ResponseGetProperty
+    vdc_response_hello: vdc_ResponseHello
+    vdc_send_announce_device: vdc_SendAnnounceDevice
+    vdc_send_announce_vdc: vdc_SendAnnounceVdc
+    vdc_send_identify: vdc_SendIdentify
+    vdc_send_pong: vdc_SendPong
+    vdc_send_push_notification: vdc_SendPushNotification
+    vdc_send_vanish: vdc_SendVanish
+    vdsm_request_generic_request: vdsm_RequestGenericRequest
+    vdsm_request_get_property: vdsm_RequestGetProperty
+    vdsm_request_hello: vdsm_RequestHello
+    vdsm_request_set_property: vdsm_RequestSetProperty
+    vdsm_send_bye: vdsm_SendBye
+    vdsm_send_call_min_scene: vdsm_NotificationCallMinScene
+    vdsm_send_call_scene: vdsm_NotificationCallScene
+    vdsm_send_dim_channel: vdsm_NotificationDimChannel
+    vdsm_send_identify: vdsm_NotificationIdentify
+    vdsm_send_output_channel_value: vdsm_NotificationSetOutputChannelValue
+    vdsm_send_ping: vdsm_SendPing
+    vdsm_send_remove: vdsm_SendRemove
+    vdsm_send_save_scene: vdsm_NotificationSaveScene
+    vdsm_send_set_control_value: vdsm_NotificationSetControlValue
+    vdsm_send_set_local_prio: vdsm_NotificationSetLocalPrio
+    vdsm_send_undo_scene: vdsm_NotificationUndoScene
+    def __init__(self, type: _Optional[_Union[Type, str]] = ..., message_id: _Optional[int] = ..., generic_response: _Optional[_Union[GenericResponse, _Mapping]] = ..., vdsm_request_hello: _Optional[_Union[vdsm_RequestHello, _Mapping]] = ..., vdc_response_hello: _Optional[_Union[vdc_ResponseHello, _Mapping]] = ..., vdsm_request_get_property: _Optional[_Union[vdsm_RequestGetProperty, _Mapping]] = ..., vdc_response_get_property: _Optional[_Union[vdc_ResponseGetProperty, _Mapping]] = ..., vdsm_request_set_property: _Optional[_Union[vdsm_RequestSetProperty, _Mapping]] = ..., vdsm_request_generic_request: _Optional[_Union[vdsm_RequestGenericRequest, _Mapping]] = ..., vdsm_send_ping: _Optional[_Union[vdsm_SendPing, _Mapping]] = ..., vdc_send_pong: _Optional[_Union[vdc_SendPong, _Mapping]] = ..., vdc_send_announce_device: _Optional[_Union[vdc_SendAnnounceDevice, _Mapping]] = ..., vdc_send_vanish: _Optional[_Union[vdc_SendVanish, _Mapping]] = ..., vdc_send_push_notification: _Optional[_Union[vdc_SendPushNotification, _Mapping]] = ..., vdsm_send_remove: _Optional[_Union[vdsm_SendRemove, _Mapping]] = ..., vdsm_send_bye: _Optional[_Union[vdsm_SendBye, _Mapping]] = ..., vdsm_send_call_scene: _Optional[_Union[vdsm_NotificationCallScene, _Mapping]] = ..., vdsm_send_save_scene: _Optional[_Union[vdsm_NotificationSaveScene, _Mapping]] = ..., vdsm_send_undo_scene: _Optional[_Union[vdsm_NotificationUndoScene, _Mapping]] = ..., vdsm_send_set_local_prio: _Optional[_Union[vdsm_NotificationSetLocalPrio, _Mapping]] = ..., vdsm_send_call_min_scene: _Optional[_Union[vdsm_NotificationCallMinScene, _Mapping]] = ..., vdsm_send_identify: _Optional[_Union[vdsm_NotificationIdentify, _Mapping]] = ..., vdsm_send_set_control_value: _Optional[_Union[vdsm_NotificationSetControlValue, _Mapping]] = ..., vdsm_send_dim_channel: _Optional[_Union[vdsm_NotificationDimChannel, _Mapping]] = ..., vdsm_send_output_channel_value: _Optional[_Union[vdsm_NotificationSetOutputChannelValue, _Mapping]] = ..., vdc_send_identify: _Optional[_Union[vdc_SendIdentify, _Mapping]] = ..., vdc_send_announce_vdc: _Optional[_Union[vdc_SendAnnounceVdc, _Mapping]] = ...) -> None: ...
 
-# ---------------------------------------------------------------------------
-# Enum: Type
-# ---------------------------------------------------------------------------
+class PropertyElement(_message.Message):
+    __slots__ = ["elements", "name", "value"]
+    ELEMENTS_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    elements: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    name: str
+    value: PropertyValue
+    def __init__(self, name: _Optional[str] = ..., value: _Optional[_Union[PropertyValue, _Mapping]] = ..., elements: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
 
-class _Type:
-    GENERIC_RESPONSE: int
-    VDSM_REQUEST_HELLO: int
-    VDC_RESPONSE_HELLO: int
-    VDSM_REQUEST_GET_PROPERTY: int
-    VDC_RESPONSE_GET_PROPERTY: int
-    VDSM_REQUEST_SET_PROPERTY: int
-    VDC_RESPONSE_SET_PROPERTY: int
-    VDSM_SEND_PING: int
-    VDC_SEND_PONG: int
-    VDC_SEND_ANNOUNCE_DEVICE: int
-    VDC_SEND_VANISH: int
-    VDC_SEND_PUSH_PROPERTY: int
-    VDSM_SEND_REMOVE: int
-    VDSM_SEND_BYE: int
-    VDSM_NOTIFICATION_CALL_SCENE: int
-    VDSM_NOTIFICATION_SAVE_SCENE: int
-    VDSM_NOTIFICATION_UNDO_SCENE: int
-    VDSM_NOTIFICATION_SET_LOCAL_PRIO: int
-    VDSM_NOTIFICATION_CALL_MIN_SCENE: int
-    VDSM_NOTIFICATION_IDENTIFY: int
-    VDSM_NOTIFICATION_SET_CONTROL_VALUE: int
-    VDSM_NOTIFICATION_DIM_CHANNEL: int
-    VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE: int
-    VDC_SEND_IDENTIFY: int
-    VDC_SEND_ANNOUNCE_VDC: int
-    VDSM_REQUEST_GENERIC_REQUEST: int
+class PropertyValue(_message.Message):
+    __slots__ = ["v_bool", "v_bytes", "v_double", "v_int64", "v_string", "v_uint64"]
+    V_BOOL_FIELD_NUMBER: _ClassVar[int]
+    V_BYTES_FIELD_NUMBER: _ClassVar[int]
+    V_DOUBLE_FIELD_NUMBER: _ClassVar[int]
+    V_INT64_FIELD_NUMBER: _ClassVar[int]
+    V_STRING_FIELD_NUMBER: _ClassVar[int]
+    V_UINT64_FIELD_NUMBER: _ClassVar[int]
+    v_bool: bool
+    v_bytes: bytes
+    v_double: float
+    v_int64: int
+    v_string: str
+    v_uint64: int
+    def __init__(self, v_bool: bool = ..., v_uint64: _Optional[int] = ..., v_int64: _Optional[int] = ..., v_double: _Optional[float] = ..., v_string: _Optional[str] = ..., v_bytes: _Optional[bytes] = ...) -> None: ...
 
-    @staticmethod
-    def Name(number: int) -> str: ...
-    @staticmethod
-    def Value(name: str) -> int: ...
+class vdc_ResponseGetProperty(_message.Message):
+    __slots__ = ["properties"]
+    PROPERTIES_FIELD_NUMBER: _ClassVar[int]
+    properties: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    def __init__(self, properties: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
 
-Type: _Type
-
-# Top-level enum constants
-GENERIC_RESPONSE: int
-VDSM_REQUEST_HELLO: int
-VDC_RESPONSE_HELLO: int
-VDSM_REQUEST_GET_PROPERTY: int
-VDC_RESPONSE_GET_PROPERTY: int
-VDSM_REQUEST_SET_PROPERTY: int
-VDC_RESPONSE_SET_PROPERTY: int
-VDSM_SEND_PING: int
-VDC_SEND_PONG: int
-VDC_SEND_ANNOUNCE_DEVICE: int
-VDC_SEND_VANISH: int
-VDC_SEND_PUSH_PROPERTY: int
-VDSM_SEND_REMOVE: int
-VDSM_SEND_BYE: int
-VDSM_NOTIFICATION_CALL_SCENE: int
-VDSM_NOTIFICATION_SAVE_SCENE: int
-VDSM_NOTIFICATION_UNDO_SCENE: int
-VDSM_NOTIFICATION_SET_LOCAL_PRIO: int
-VDSM_NOTIFICATION_CALL_MIN_SCENE: int
-VDSM_NOTIFICATION_IDENTIFY: int
-VDSM_NOTIFICATION_SET_CONTROL_VALUE: int
-VDSM_NOTIFICATION_DIM_CHANNEL: int
-VDSM_NOTIFICATION_SET_OUTPUT_CHANNEL_VALUE: int
-VDC_SEND_IDENTIFY: int
-VDC_SEND_ANNOUNCE_VDC: int
-VDSM_REQUEST_GENERIC_REQUEST: int
-
-# ---------------------------------------------------------------------------
-# Enum: ResultCode
-# ---------------------------------------------------------------------------
-
-class _ResultCode:
-    ERR_OK: int
-    ERR_MESSAGE_UNKNOWN: int
-    ERR_INCOMPATIBLE_API: int
-    ERR_SERVICE_NOT_AVAILABLE: int
-    ERR_INSUFFICIENT_STORAGE: int
-    ERR_FORBIDDEN: int
-    ERR_NOT_IMPLEMENTED: int
-    ERR_NO_CONTENT_FOR_ARRAY: int
-    ERR_INVALID_VALUE_TYPE: int
-    ERR_MISSING_SUBMESSAGE: int
-    ERR_MISSING_DATA: int
-    ERR_NOT_FOUND: int
-    ERR_NOT_AUTHORIZED: int
-
-    @staticmethod
-    def Name(number: int) -> str: ...
-    @staticmethod
-    def Value(name: str) -> int: ...
-
-ResultCode: _ResultCode
-
-# Top-level enum constants
-ERR_OK: int
-ERR_MESSAGE_UNKNOWN: int
-ERR_INCOMPATIBLE_API: int
-ERR_SERVICE_NOT_AVAILABLE: int
-ERR_INSUFFICIENT_STORAGE: int
-ERR_FORBIDDEN: int
-ERR_NOT_IMPLEMENTED: int
-ERR_NO_CONTENT_FOR_ARRAY: int
-ERR_INVALID_VALUE_TYPE: int
-ERR_MISSING_SUBMESSAGE: int
-ERR_MISSING_DATA: int
-ERR_NOT_FOUND: int
-ERR_NOT_AUTHORIZED: int
-
-# ---------------------------------------------------------------------------
-# Messages
-# ---------------------------------------------------------------------------
-
-class vdsm_RequestHello(_Message):
+class vdc_ResponseHello(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
-    api_version: int
-    def __init__(self, *, dSUID: Optional[str] = ..., api_version: Optional[int] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
 
-class vdc_ResponseHello(_Message):
-    dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
-
-class vdc_SendAnnounceDevice(_Message):
+class vdc_SendAnnounceDevice(_message.Message):
+    __slots__ = ["dSUID", "vdc_dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    VDC_DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
     vdc_dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ..., vdc_dSUID: Optional[str] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ..., vdc_dSUID: _Optional[str] = ...) -> None: ...
 
-class vdc_SendAnnounceVdc(_Message):
+class vdc_SendAnnounceVdc(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
 
-class vdc_SendVanish(_Message):
+class vdc_SendIdentify(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
 
-class vdc_SendIdentify(_Message):
+class vdc_SendPong(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
 
-class vdsm_SendBye(_Message):
+class vdc_SendPushNotification(_message.Message):
+    __slots__ = ["changedproperties", "dSUID", "deviceevents"]
+    CHANGEDPROPERTIES_FIELD_NUMBER: _ClassVar[int]
+    DEVICEEVENTS_FIELD_NUMBER: _ClassVar[int]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    changedproperties: _containers.RepeatedCompositeFieldContainer[PropertyElement]
     dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
+    deviceevents: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    def __init__(self, dSUID: _Optional[str] = ..., changedproperties: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ..., deviceevents: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
 
-class vdsm_SendRemove(_Message):
+class vdc_SendVanish(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
     dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
 
-class PropertyValue(_Message):
-    v_bool: bool
-    v_uint64: int
-    v_int64: int
-    v_double: float
-    v_string: str
-    v_bytes: bytes
-    def __init__(
-        self,
-        *,
-        v_bool: Optional[bool] = ...,
-        v_uint64: Optional[int] = ...,
-        v_int64: Optional[int] = ...,
-        v_double: Optional[float] = ...,
-        v_string: Optional[str] = ...,
-        v_bytes: Optional[bytes] = ...,
-    ) -> None: ...
-
-class PropertyElement(_Message):
-    name: str
-    @property
-    def value(self) -> PropertyValue: ...
-    @property
-    def elements(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(
-        self,
-        *,
-        name: Optional[str] = ...,
-        value: Optional[PropertyValue] = ...,
-        elements: Optional[list[PropertyElement]] = ...,
-    ) -> None: ...
-
-class vdsm_RequestGetProperty(_Message):
-    dSUID: str
-    @property
-    def query(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(self, *, dSUID: Optional[str] = ..., query: Optional[list[PropertyElement]] = ...) -> None: ...
-
-class vdc_ResponseGetProperty(_Message):
-    @property
-    def properties(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(self, *, properties: Optional[list[PropertyElement]] = ...) -> None: ...
-
-class vdsm_RequestSetProperty(_Message):
-    dSUID: str
-    @property
-    def properties(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(self, *, dSUID: Optional[str] = ..., properties: Optional[list[PropertyElement]] = ...) -> None: ...
-
-class vdsm_RequestGenericRequest(_Message):
-    dSUID: str
-    methodname: str
-    @property
-    def params(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[str] = ...,
-        methodname: Optional[str] = ...,
-        params: Optional[list[PropertyElement]] = ...,
-    ) -> None: ...
-
-class vdsm_SendPing(_Message):
-    dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
-
-class vdc_SendPong(_Message):
-    dSUID: str
-    def __init__(self, *, dSUID: Optional[str] = ...) -> None: ...
-
-class vdc_SendPushNotification(_Message):
-    dSUID: str
-    @property
-    def changedproperties(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    @property
-    def deviceevents(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[str] = ...,
-        changedproperties: Optional[list[PropertyElement]] = ...,
-        deviceevents: Optional[list[PropertyElement]] = ...,
-    ) -> None: ...
-
-class vdc_SendPushProperty(_Message):
-    dSUID: str
-    @property
-    def properties(self) -> RepeatedCompositeFieldContainer[PropertyElement]: ...
-    def __init__(self, *, dSUID: Optional[str] = ..., properties: Optional[list[PropertyElement]] = ...) -> None: ...
-
-class vdsm_NotificationCallScene(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
+class vdsm_NotificationCallMinScene(_message.Message):
+    __slots__ = ["dSUID", "group", "scene", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    SCENE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
+    group: int
     scene: int
+    zone_id: int
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., scene: _Optional[int] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
+
+class vdsm_NotificationCallScene(_message.Message):
+    __slots__ = ["dSUID", "force", "group", "scene", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    FORCE_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    SCENE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
     force: bool
     group: int
-    zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        scene: Optional[int] = ...,
-        force: Optional[bool] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
-
-class vdsm_NotificationSaveScene(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
     scene: int
+    zone_id: int
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., scene: _Optional[int] = ..., force: bool = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
+
+class vdsm_NotificationDimChannel(_message.Message):
+    __slots__ = ["area", "channel", "channelId", "dSUID", "group", "mode", "zone_id"]
+    AREA_FIELD_NUMBER: _ClassVar[int]
+    CHANNELID_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_FIELD_NUMBER: _ClassVar[int]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    MODE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    area: int
+    channel: int
+    channelId: str
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
+    group: int
+    mode: int
+    zone_id: int
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., channel: _Optional[int] = ..., mode: _Optional[int] = ..., area: _Optional[int] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ..., channelId: _Optional[str] = ...) -> None: ...
+
+class vdsm_NotificationIdentify(_message.Message):
+    __slots__ = ["dSUID", "group", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
     group: int
     zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        scene: Optional[int] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
 
-class vdsm_NotificationUndoScene(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
+class vdsm_NotificationSaveScene(_message.Message):
+    __slots__ = ["dSUID", "group", "scene", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    SCENE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
+    group: int
     scene: int
-    group: int
     zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        scene: Optional[int] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., scene: _Optional[int] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
 
-class vdsm_NotificationSetLocalPrio(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
-    scene: int
+class vdsm_NotificationSetControlValue(_message.Message):
+    __slots__ = ["dSUID", "group", "name", "value", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
     group: int
-    zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        scene: Optional[int] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
-
-class vdsm_NotificationCallMinScene(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
-    scene: int
-    group: int
-    zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        scene: Optional[int] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
-
-class vdsm_NotificationIdentify(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
-    group: int
-    zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
-
-class vdsm_NotificationSetControlValue(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
     name: str
     value: float
-    group: int
     zone_id: int
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        name: Optional[str] = ...,
-        value: Optional[float] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-    ) -> None: ...
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., name: _Optional[str] = ..., value: _Optional[float] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
 
-class vdsm_NotificationDimChannel(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
-    channel: int
-    mode: int
-    area: int
+class vdsm_NotificationSetLocalPrio(_message.Message):
+    __slots__ = ["dSUID", "group", "scene", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    SCENE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
     group: int
+    scene: int
     zone_id: int
-    channelId: str
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        channel: Optional[int] = ...,
-        mode: Optional[int] = ...,
-        area: Optional[int] = ...,
-        group: Optional[int] = ...,
-        zone_id: Optional[int] = ...,
-        channelId: Optional[str] = ...,
-    ) -> None: ...
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., scene: _Optional[int] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
 
-class vdsm_NotificationSetOutputChannelValue(_Message):
-    @property
-    def dSUID(self) -> RepeatedScalarFieldContainer[str]: ...
+class vdsm_NotificationSetOutputChannelValue(_message.Message):
+    __slots__ = ["apply_now", "channel", "channelId", "dSUID", "value"]
+    APPLY_NOW_FIELD_NUMBER: _ClassVar[int]
+    CHANNELID_FIELD_NUMBER: _ClassVar[int]
+    CHANNEL_FIELD_NUMBER: _ClassVar[int]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    VALUE_FIELD_NUMBER: _ClassVar[int]
     apply_now: bool
     channel: int
-    value: float
     channelId: str
-    def __init__(
-        self,
-        *,
-        dSUID: Optional[list[str]] = ...,
-        apply_now: Optional[bool] = ...,
-        channel: Optional[int] = ...,
-        value: Optional[float] = ...,
-        channelId: Optional[str] = ...,
-    ) -> None: ...
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
+    value: float
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., apply_now: bool = ..., channel: _Optional[int] = ..., value: _Optional[float] = ..., channelId: _Optional[str] = ...) -> None: ...
 
-class GenericResponse(_Message):
-    code: int
-    description: str
-    def __init__(self, *, code: Optional[int] = ..., description: Optional[str] = ...) -> None: ...
+class vdsm_NotificationUndoScene(_message.Message):
+    __slots__ = ["dSUID", "group", "scene", "zone_id"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    GROUP_FIELD_NUMBER: _ClassVar[int]
+    SCENE_FIELD_NUMBER: _ClassVar[int]
+    ZONE_ID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: _containers.RepeatedScalarFieldContainer[str]
+    group: int
+    scene: int
+    zone_id: int
+    def __init__(self, dSUID: _Optional[_Iterable[str]] = ..., scene: _Optional[int] = ..., group: _Optional[int] = ..., zone_id: _Optional[int] = ...) -> None: ...
 
-class Message(_Message):
-    type: int
-    message_id: int
-    @property
-    def generic_response(self) -> GenericResponse: ...
-    @property
-    def vdsm_request_hello(self) -> vdsm_RequestHello: ...
-    @property
-    def vdc_response_hello(self) -> vdc_ResponseHello: ...
-    @property
-    def vdsm_request_get_property(self) -> vdsm_RequestGetProperty: ...
-    @property
-    def vdc_response_get_property(self) -> vdc_ResponseGetProperty: ...
-    @property
-    def vdsm_request_set_property(self) -> vdsm_RequestSetProperty: ...
-    @property
-    def vdsm_request_generic_request(self) -> vdsm_RequestGenericRequest: ...
-    @property
-    def vdsm_send_ping(self) -> vdsm_SendPing: ...
-    @property
-    def vdc_send_pong(self) -> vdc_SendPong: ...
-    @property
-    def vdc_send_announce_device(self) -> vdc_SendAnnounceDevice: ...
-    @property
-    def vdc_send_vanish(self) -> vdc_SendVanish: ...
-    @property
-    def vdc_send_push_property(self) -> vdc_SendPushProperty: ...
-    @property
-    def vdsm_send_remove(self) -> vdsm_SendRemove: ...
-    @property
-    def vdsm_send_bye(self) -> vdsm_SendBye: ...
-    @property
-    def vdsm_send_call_scene(self) -> vdsm_NotificationCallScene: ...
-    @property
-    def vdsm_send_save_scene(self) -> vdsm_NotificationSaveScene: ...
-    @property
-    def vdsm_send_undo_scene(self) -> vdsm_NotificationUndoScene: ...
-    @property
-    def vdsm_send_set_local_prio(self) -> vdsm_NotificationSetLocalPrio: ...
-    @property
-    def vdsm_send_call_min_scene(self) -> vdsm_NotificationCallMinScene: ...
-    @property
-    def vdsm_send_identify(self) -> vdsm_NotificationIdentify: ...
-    @property
-    def vdsm_send_set_control_value(self) -> vdsm_NotificationSetControlValue: ...
-    @property
-    def vdsm_send_dim_channel(self) -> vdsm_NotificationDimChannel: ...
-    @property
-    def vdsm_send_output_channel_value(self) -> vdsm_NotificationSetOutputChannelValue: ...
-    @property
-    def vdc_send_identify(self) -> vdc_SendIdentify: ...
-    @property
-    def vdc_send_announce_vdc(self) -> vdc_SendAnnounceVdc: ...
-    def __init__(
-        self,
-        *,
-        type: Optional[int] = ...,
-        message_id: Optional[int] = ...,
-        generic_response: Optional[GenericResponse] = ...,
-        vdsm_request_hello: Optional[vdsm_RequestHello] = ...,
-        vdc_response_hello: Optional[vdc_ResponseHello] = ...,
-        vdsm_request_get_property: Optional[vdsm_RequestGetProperty] = ...,
-        vdc_response_get_property: Optional[vdc_ResponseGetProperty] = ...,
-        vdsm_request_set_property: Optional[vdsm_RequestSetProperty] = ...,
-        vdsm_request_generic_request: Optional[vdsm_RequestGenericRequest] = ...,
-        vdsm_send_ping: Optional[vdsm_SendPing] = ...,
-        vdc_send_pong: Optional[vdc_SendPong] = ...,
-        vdc_send_announce_device: Optional[vdc_SendAnnounceDevice] = ...,
-        vdc_send_vanish: Optional[vdc_SendVanish] = ...,
-        vdc_send_push_property: Optional[vdc_SendPushProperty] = ...,
-        vdsm_send_remove: Optional[vdsm_SendRemove] = ...,
-        vdsm_send_bye: Optional[vdsm_SendBye] = ...,
-        vdsm_send_call_scene: Optional[vdsm_NotificationCallScene] = ...,
-        vdsm_send_save_scene: Optional[vdsm_NotificationSaveScene] = ...,
-        vdsm_send_undo_scene: Optional[vdsm_NotificationUndoScene] = ...,
-        vdsm_send_set_local_prio: Optional[vdsm_NotificationSetLocalPrio] = ...,
-        vdsm_send_call_min_scene: Optional[vdsm_NotificationCallMinScene] = ...,
-        vdsm_send_identify: Optional[vdsm_NotificationIdentify] = ...,
-        vdsm_send_set_control_value: Optional[vdsm_NotificationSetControlValue] = ...,
-        vdsm_send_dim_channel: Optional[vdsm_NotificationDimChannel] = ...,
-        vdsm_send_output_channel_value: Optional[vdsm_NotificationSetOutputChannelValue] = ...,
-        vdc_send_identify: Optional[vdc_SendIdentify] = ...,
-        vdc_send_announce_vdc: Optional[vdc_SendAnnounceVdc] = ...,
-    ) -> None: ...
+class vdsm_RequestGenericRequest(_message.Message):
+    __slots__ = ["dSUID", "methodname", "params"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    METHODNAME_FIELD_NUMBER: _ClassVar[int]
+    PARAMS_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    methodname: str
+    params: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    def __init__(self, dSUID: _Optional[str] = ..., methodname: _Optional[str] = ..., params: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
+
+class vdsm_RequestGetProperty(_message.Message):
+    __slots__ = ["dSUID", "query"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    QUERY_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    query: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    def __init__(self, dSUID: _Optional[str] = ..., query: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
+
+class vdsm_RequestHello(_message.Message):
+    __slots__ = ["api_version", "dSUID"]
+    API_VERSION_FIELD_NUMBER: _ClassVar[int]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    api_version: int
+    dSUID: str
+    def __init__(self, dSUID: _Optional[str] = ..., api_version: _Optional[int] = ...) -> None: ...
+
+class vdsm_RequestSetProperty(_message.Message):
+    __slots__ = ["dSUID", "properties"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    PROPERTIES_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    properties: _containers.RepeatedCompositeFieldContainer[PropertyElement]
+    def __init__(self, dSUID: _Optional[str] = ..., properties: _Optional[_Iterable[_Union[PropertyElement, _Mapping]]] = ...) -> None: ...
+
+class vdsm_SendBye(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
+
+class vdsm_SendPing(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
+
+class vdsm_SendRemove(_message.Message):
+    __slots__ = ["dSUID"]
+    DSUID_FIELD_NUMBER: _ClassVar[int]
+    dSUID: str
+    def __init__(self, dSUID: _Optional[str] = ...) -> None: ...
+
+class Type(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class ResultCode(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []
+
+class ErrorType(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = []

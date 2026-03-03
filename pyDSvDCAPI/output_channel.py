@@ -36,7 +36,7 @@ Channel values can change from **two** directions:
 2. **device → vdSM** (local change → ``pushProperty``, §7.1.3):
    When the device-side code calls :meth:`OutputChannel.update_value`,
    the new value is stored and — if ``pushChanges`` is set on the
-   owning output — a ``VDC_SEND_PUSH_PROPERTY`` is sent to the vdSM.
+   owning output — a ``VDC_SEND_PUSH_NOTIFICATION`` is sent to the vdSM.
 
 ``apply_now`` buffering (§7.3.9)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -417,7 +417,7 @@ class OutputChannel:
         Stores the value and marks the hardware-confirmation timestamp.
         If the owning output has ``pushChanges`` enabled and an active
         session, pushes the new value to the vdSM via
-        ``VDC_SEND_PUSH_PROPERTY``.
+        ``VDC_SEND_PUSH_NOTIFICATION``.
 
         Parameters
         ----------

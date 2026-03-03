@@ -44,15 +44,51 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Sentinel: name-only PropertyElement (no value field on the wire)
+# ---------------------------------------------------------------------------
+
+class _NoValue:
+    """Sentinel indicating a PropertyElement should carry **only** a name.
+
+    Use this as a dict value when building property trees where the
+    resulting ``PropertyElement`` must have its ``name`` set but its
+    ``value`` field completely absent (not even an empty
+    ``PropertyValue``).  This matches the p44-vdc behaviour for
+    enumeration value-list entries in state/property descriptions.
+    """
+    _instance: Optional["_NoValue"] = None
+
+    def __new__(cls) -> "_NoValue":
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return "NO_VALUE"
+
+    def __bool__(self) -> bool:          # noqa: D105
+        return False
+
+
+NO_VALUE: _NoValue = _NoValue()
+"""Singleton sentinel — use as a dict value to produce a name-only
+``PropertyElement`` with no ``value`` field on the wire."""
+
+
+# ---------------------------------------------------------------------------
 # Python value → PropertyValue
 # ---------------------------------------------------------------------------
 
 def _to_property_value(value: Any) -> Optional[pb.PropertyValue]:
     """Convert a Python value to a :class:`PropertyValue` protobuf.
 
-    Returns ``None`` when *value* is a ``dict`` (use nested elements
-    instead) or an unsupported type.
+    Returns ``None`` when *value* is :data:`NO_VALUE`, a ``dict``
+    (use nested elements instead), or an unsupported type.
     """
+    if value is NO_VALUE:
+        # Name-only entry — no value field should appear on the wire.
+        return None
+
     if value is None:
         # Explicit NULL — an empty PropertyValue with no fields set.
         return pb.PropertyValue()
@@ -94,8 +130,11 @@ def dict_to_elements(
     elements: List[pb.PropertyElement] = []
     for key, val in properties.items():
         elem = pb.PropertyElement()
-        elem.name = key
-        if isinstance(val, dict):
+        elem.name = str(key)
+        if val is NO_VALUE:
+            # Name-only PropertyElement — no value or sub-elements.
+            pass
+        elif isinstance(val, dict):
             for sub in dict_to_elements(val):
                 elem.elements.append(sub)
         else:
@@ -256,16 +295,62 @@ def elements_to_dict(
 
     Nested elements are converted recursively.  This is the inverse of
     :func:`dict_to_elements`.
+
+    Empty-name elements (wildcards in ``setProperty`` context, see
+    §7.1.2) are preserved under the ``""`` key.  If multiple
+    empty-name elements exist at the same level only the last one
+    is kept.
     """
     result: Dict[str, Any] = {}
     for elem in elements:
-        name = elem.name
-        if not name:
-            continue
+        name = elem.name  # May be "" for wildcard.
         if len(elem.elements) > 0:
             result[name] = elements_to_dict(elem.elements)
         elif elem.HasField("value"):
             result[name] = _extract_value(elem.value)
         else:
             result[name] = None
+    return result
+
+
+def expand_setproperty_wildcards(
+    container: Dict[str, Any],
+    all_keys: Any,
+) -> Dict[str, Any]:
+    """Expand wildcard (empty-name) entries for ``setProperty`` semantics.
+
+    Per vDC API §7.1.2: *"If the name is specified empty, this is a
+    wildcard meaning all elements of that level (for example: all
+    inputs or all scenes) should be set to the same value."*
+
+    If *container* has an empty-string key (``""``), its value is
+    used as the template for every key in *all_keys* that is not
+    already explicitly present in *container*.
+
+    Parameters
+    ----------
+    container:
+        The incoming property dict for a container level (e.g.
+        ``scenes``, ``buttonInputSettings``).  May contain a
+        ``""`` key representing a wildcard.
+    all_keys:
+        The universe of existing keys at this level (e.g. all scene
+        indices, all input indices).  Each key is stringified via
+        ``str()`` before comparison.
+
+    Returns
+    -------
+    dict
+        A new dict with the wildcard expanded.  The ``""`` key
+        itself is removed from the result.
+    """
+    wildcard = container.get("")
+    result: Dict[str, Any] = {
+        k: v for k, v in container.items() if k != ""
+    }
+    if wildcard is not None:
+        for key in all_keys:
+            key_str = str(key)
+            if key_str not in result:
+                result[key_str] = wildcard
     return result

@@ -103,6 +103,7 @@ class DeviceState:
 
     def __init__(
         self,
+        *,
         vdsd: Vdsd,
         ds_index: int = 0,
         name: str = "",

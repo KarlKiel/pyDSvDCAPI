@@ -51,6 +51,41 @@ from pyDSvDCAPI.property_handling import (
 from pyDSvDCAPI.session import MessageCallback, SessionState, VdcSession
 from pyDSvDCAPI.vdc import Vdc, VdcCapabilities
 
+#: Callback invoked when the vdSM requests device removal (§6.3).
+#: Receives the dSUID string of the device to remove.
+#: Return ``True`` to allow removal, ``False`` to reject it
+#: (``ERR_FORBIDDEN``).  When no callback is set, removal is
+#: always accepted.
+RemoveCallback = Callable[[str], Awaitable[bool]]
+
+#: Callback invoked when the vdSM requests identification of the
+#: **vDC host device** itself (§7.4.5 via GenericRequest).
+#: Receives the dSUID string of the addressed vDC.  Should
+#: trigger a visual/acoustic signal on the platform hardware.
+IdentifyCallback = Callable[[str], Awaitable[None]]
+
+#: Callback for the ``pair`` GenericRequest method (§7.4.1).
+#: ``(dsuid, establish, timeout, params) -> None``
+PairCallback = Callable[[str, bool, int, Dict[str, Any]], Awaitable[None]]
+
+#: Callback for the ``authenticate`` GenericRequest method (§7.4.2).
+#: ``(dsuid, auth_data, auth_scope, params) -> None``
+AuthenticateCallback = Callable[
+    [str, str, str, Dict[str, Any]], Awaitable[None]
+]
+
+#: Callback for the ``firmwareUpgrade`` GenericRequest method (§7.4.3).
+#: ``(dsuid, check_only, clear_settings, params) -> None``
+FirmwareUpgradeCallback = Callable[
+    [str, bool, bool, Dict[str, Any]], Awaitable[None]
+]
+
+#: Callback for the ``setConfiguration`` GenericRequest method (§7.4.4).
+#: ``(dsuid, config_id, params) -> None``
+SetConfigurationCallback = Callable[
+    [str, str, Dict[str, Any]], Awaitable[None]
+]
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -298,6 +333,12 @@ class VdcHost:
         self._session: Optional[VdcSession] = None
         self._session_task: Optional[asyncio.Task] = None
         self._on_message: Optional[MessageCallback] = None
+        self._on_remove: Optional[RemoveCallback] = None
+        self._on_identify: Optional[IdentifyCallback] = None
+        self._on_pair: Optional[PairCallback] = None
+        self._on_authenticate: Optional[AuthenticateCallback] = None
+        self._on_firmware_upgrade: Optional[FirmwareUpgradeCallback] = None
+        self._on_set_configuration: Optional[SetConfigurationCallback] = None
 
         # --- vDC registry ---------------------------------------------
         self._vdcs: Dict[str, Vdc] = {}  # keyed by dSUID string
@@ -768,6 +809,12 @@ class VdcHost:
         self,
         *,
         on_message: Optional[MessageCallback] = None,
+        on_remove: Optional[RemoveCallback] = None,
+        on_identify: Optional[IdentifyCallback] = None,
+        on_pair: Optional["PairCallback"] = None,
+        on_authenticate: Optional["AuthenticateCallback"] = None,
+        on_firmware_upgrade: Optional["FirmwareUpgradeCallback"] = None,
+        on_set_configuration: Optional["SetConfigurationCallback"] = None,
         announce: bool = True,
         bind_address: str = "0.0.0.0",
     ) -> None:
@@ -779,6 +826,34 @@ class VdcHost:
             Async callback for messages that are not handled internally
             (i.e. not ``hello``, ``ping``, or ``bye``).  See
             :data:`~pyDSvDCAPI.session.MessageCallback`.
+        on_remove:
+            Optional async callback invoked when the vdSM requests
+            device removal (§6.3).  Receives the dSUID string.  Return
+            ``True`` to allow, ``False`` to reject
+            (``ERR_FORBIDDEN``).  When ``None``, removal is always
+            accepted.
+        on_identify:
+            Optional async callback invoked when the vdSM requests
+            identification of the vDC host platform (§7.4.5 via
+            GenericRequest).  Receives the dSUID string.  For
+            **device-level** identification (§7.3.7), set
+            ``Vdsd.on_identify`` on each device instead.
+        on_pair:
+            Optional async callback for the ``pair`` GenericRequest
+            (§7.4.1 learn-in/learn-out).  Signature:
+            ``(dsuid, establish, timeout, params) -> None``.
+        on_authenticate:
+            Optional async callback for the ``authenticate``
+            GenericRequest (§7.4.2).  Signature:
+            ``(dsuid, auth_data, auth_scope, params) -> None``.
+        on_firmware_upgrade:
+            Optional async callback for the ``firmwareUpgrade``
+            GenericRequest (§7.4.3).  Signature:
+            ``(dsuid, check_only, clear_settings, params) -> None``.
+        on_set_configuration:
+            Optional async callback for the ``setConfiguration``
+            GenericRequest (§7.4.4).  Signature:
+            ``(dsuid, config_id, params) -> None``.
         announce:
             If ``True`` (default) the DNS-SD service is announced
             automatically after the server starts listening.
@@ -791,6 +866,12 @@ class VdcHost:
             return
 
         self._on_message = on_message
+        self._on_remove = on_remove
+        self._on_identify = on_identify
+        self._on_pair = on_pair
+        self._on_authenticate = on_authenticate
+        self._on_firmware_upgrade = on_firmware_upgrade
+        self._on_set_configuration = on_set_configuration
 
         self._server = await asyncio.start_server(
             self._handle_new_connection,
@@ -993,8 +1074,19 @@ class VdcHost:
             await self._handle_set_control_value(msg)
             return None
 
+        if msg_type == pb.VDSM_NOTIFICATION_DIM_CHANNEL:
+            await self._handle_dim_channel(msg)
+            return None
+
+        if msg_type == pb.VDSM_NOTIFICATION_IDENTIFY:
+            await self._handle_identify(msg)
+            return None
+
         if msg_type == pb.VDSM_REQUEST_GENERIC_REQUEST:
             return await self._handle_generic_request(session, msg)
+
+        if msg_type == pb.VDSM_SEND_REMOVE:
+            return await self._handle_remove(msg)
 
         # Delegate to the user callback.
         if self._on_message is not None:
@@ -1134,6 +1226,12 @@ class VdcHost:
             logger.info(
                 "vdSD '%s' zoneID set to %d", vdsd.dsuid, vdsd.zone_id
             )
+        if "progMode" in incoming:
+            val = incoming["progMode"]
+            vdsd.prog_mode = bool(val) if val is not None else None
+            logger.info(
+                "vdSD '%s' progMode set to %s", vdsd.dsuid, vdsd.prog_mode
+            )
         # Button input settings (§4.2.2).
         if "buttonInputSettings" in incoming:
             btn_settings = incoming["buttonInputSettings"]
@@ -1254,10 +1352,15 @@ class VdcHost:
 
         * ``invokeDeviceAction`` (§7.3.10) — invoke an action on a
           target vdSD.
+        * ``identify`` (§7.4.5) — identify the vDC host platform.
+        * ``pair`` (§7.4.1) — learn-in / learn-out.
+        * ``authenticate`` (§7.4.2) — authentication process.
+        * ``firmwareUpgrade`` (§7.4.3) — firmware upgrade process.
+        * ``setConfiguration`` (§7.4.4) — change device configuration.
 
         All other method names are delegated to the user-supplied
         ``on_message`` callback. If no callback handles them, an
-        ``ERR_NOT_FOUND`` response is returned.
+        ``ERR_NOT_IMPLEMENTED`` response is returned.
         """
         req = msg.vdsm_request_generic_request
         method = req.methodname
@@ -1319,17 +1422,298 @@ class VdcHost:
                 resp.generic_response.description = str(exc)
             return resp
 
+        if method == "identify":
+            # §7.4.5 — Identify vDC host device.
+            logger.info(
+                "GenericRequest identify for dSUID %s", dsuid_str,
+            )
+            if self._on_identify is not None:
+                try:
+                    await self._on_identify(dsuid_str)
+                    resp.generic_response.code = pb.ERR_OK
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "on_identify callback raised for %s",
+                        dsuid_str,
+                    )
+                    resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                    resp.generic_response.description = str(exc)
+            else:
+                # No callback — acknowledge but do nothing.
+                resp.generic_response.code = pb.ERR_OK
+            return resp
+
+        if method == "pair":
+            # §7.4.1 — Learn-in / learn-out.
+            if self._on_pair is not None:
+                try:
+                    await self._on_pair(
+                        dsuid_str,
+                        bool(params_dict.get("establish", True)),
+                        int(params_dict.get("timeout", -1)),
+                        {k: v for k, v in params_dict.items()
+                         if k not in ("establish", "timeout")},
+                    )
+                    resp.generic_response.code = pb.ERR_OK
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "on_pair callback raised for %s", dsuid_str,
+                    )
+                    resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                    resp.generic_response.description = str(exc)
+            else:
+                resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                resp.generic_response.description = (
+                    "pair: no callback registered"
+                )
+            return resp
+
+        if method == "authenticate":
+            # §7.4.2 — Authenticate.
+            if self._on_authenticate is not None:
+                try:
+                    await self._on_authenticate(
+                        dsuid_str,
+                        str(params_dict.get("authData", "")),
+                        str(params_dict.get("authScope", "")),
+                        {k: v for k, v in params_dict.items()
+                         if k not in ("authData", "authScope")},
+                    )
+                    resp.generic_response.code = pb.ERR_OK
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "on_authenticate callback raised for %s",
+                        dsuid_str,
+                    )
+                    resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                    resp.generic_response.description = str(exc)
+            else:
+                resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                resp.generic_response.description = (
+                    "authenticate: no callback registered"
+                )
+            return resp
+
+        if method == "firmwareUpgrade":
+            # §7.4.3 — Firmware upgrade.
+            if self._on_firmware_upgrade is not None:
+                try:
+                    await self._on_firmware_upgrade(
+                        dsuid_str,
+                        bool(params_dict.get("checkonly", False)),
+                        bool(params_dict.get("clearsettings", False)),
+                        {k: v for k, v in params_dict.items()
+                         if k not in ("checkonly", "clearsettings")},
+                    )
+                    resp.generic_response.code = pb.ERR_OK
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "on_firmware_upgrade callback raised for %s",
+                        dsuid_str,
+                    )
+                    resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                    resp.generic_response.description = str(exc)
+            else:
+                resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                resp.generic_response.description = (
+                    "firmwareUpgrade: no callback registered"
+                )
+            return resp
+
+        if method == "setConfiguration":
+            # §7.4.4 — Change device configuration/profile.
+            if self._on_set_configuration is not None:
+                try:
+                    await self._on_set_configuration(
+                        dsuid_str,
+                        str(params_dict.get("id", "")),
+                        {k: v for k, v in params_dict.items()
+                         if k != "id"},
+                    )
+                    resp.generic_response.code = pb.ERR_OK
+                except Exception as exc:  # noqa: BLE001
+                    logger.exception(
+                        "on_set_configuration callback raised for %s",
+                        dsuid_str,
+                    )
+                    resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                    resp.generic_response.description = str(exc)
+            else:
+                resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                resp.generic_response.description = (
+                    "setConfiguration: no callback registered"
+                )
+            return resp
+
         # Unknown generic request — delegate to user callback.
         if self._on_message is not None:
             result = await self._on_message(session, msg)
             if result is not None:
                 return result
 
-        resp.generic_response.code = pb.ERR_NOT_FOUND
+        resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
         resp.generic_response.description = (
             f"Unknown generic request method: {method}"
         )
         return resp
+
+    # ---- remove handler (§6.3) ------------------------------------
+
+    async def _handle_remove(self, msg: pb.Message) -> pb.Message:
+        """Handle ``VDSM_SEND_REMOVE`` (§6.3).
+
+        Looks up the device containing the addressed vdSD, consults
+        the optional ``on_remove`` callback, and either removes the
+        device from its vDC or rejects with ``ERR_FORBIDDEN``.
+        """
+        dsuid_str = msg.vdsm_send_remove.dSUID.upper()
+        logger.info("remove request for dSUID %s", dsuid_str)
+
+        resp = pb.Message()
+        resp.type = pb.GENERIC_RESPONSE
+        resp.message_id = msg.message_id
+
+        # Find the vdSD and its owning vDC.
+        dsuid = DsUid.from_string(dsuid_str)
+        owning_vdc: Optional[Vdc] = None
+        for vdc in self._vdcs.values():
+            if vdc.get_vdsd_by_dsuid(dsuid) is not None:
+                owning_vdc = vdc
+                break
+
+        if owning_vdc is None:
+            logger.warning(
+                "remove: device %s not found", dsuid_str,
+            )
+            resp.generic_response.code = pb.ERR_NOT_FOUND
+            resp.generic_response.description = (
+                f"Device {dsuid_str} not found"
+            )
+            return resp
+
+        # Consult user callback (if set).
+        if self._on_remove is not None:
+            try:
+                allowed = await self._on_remove(dsuid_str)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "on_remove callback failed for %s", dsuid_str,
+                )
+                allowed = False
+            if not allowed:
+                logger.info(
+                    "remove: rejected by callback for %s", dsuid_str,
+                )
+                resp.generic_response.code = pb.ERR_FORBIDDEN
+                resp.generic_response.description = (
+                    f"Removal of {dsuid_str} rejected"
+                )
+                return resp
+
+        # Remove the device from the vDC.
+        owning_vdc.remove_device(dsuid)
+        logger.info(
+            "remove: device %s removed from vDC '%s'",
+            dsuid_str, owning_vdc.name,
+        )
+        resp.generic_response.code = pb.ERR_OK
+        return resp
+
+    # ---- dimChannel notification handler (§7.3.5) -----------------
+
+    async def _handle_dim_channel(self, msg: pb.Message) -> None:
+        """Handle ``VDSM_NOTIFICATION_DIM_CHANNEL`` (§7.3.5).
+
+        Resolves the target output channel and delegates to the
+        output's :meth:`~pyDSvDCAPI.output.Output.dim_channel`
+        method which invokes the ``on_dim_channel`` callback.
+        """
+        notif = msg.vdsm_send_dim_channel
+        mode = notif.mode
+        area = notif.area
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "dimChannel: vdSD %s not found", dsuid_str,
+                )
+                continue
+
+            output = getattr(vdsd, "output", None)
+            if output is None:
+                logger.debug(
+                    "dimChannel: vdSD %s has no output", dsuid_str,
+                )
+                continue
+
+            # Resolve the channel — prefer channelId (API v3),
+            # fall back to channel type (int).
+            channel_obj = None
+            if notif.channelId:
+                for ch in output.channels.values():
+                    if ch.name == notif.channelId:
+                        channel_obj = ch
+                        break
+            if channel_obj is None and notif.channel:
+                from pyDSvDCAPI.enums import OutputChannelType
+                try:
+                    ct = OutputChannelType(int(notif.channel))
+                    channel_obj = output.get_channel_by_type(ct)
+                except (ValueError, KeyError):
+                    pass
+            # channel=0 means "default channel" — use the first one.
+            if channel_obj is None:
+                chs = output.channels
+                if chs:
+                    channel_obj = chs[min(chs)]
+
+            if channel_obj is None:
+                logger.warning(
+                    "dimChannel: no channel resolved for vdSD %s",
+                    dsuid_str,
+                )
+                continue
+
+            logger.debug(
+                "dimChannel: %s ch=%s mode=%d area=%d",
+                dsuid_str, channel_obj.name, mode, area,
+            )
+
+            try:
+                await output.dim_channel(channel_obj, mode, area)
+            except Exception:
+                logger.exception(
+                    "dimChannel handler raised for vdSD %s",
+                    dsuid_str,
+                )
+
+    # ---- identify notification handler (§7.3.7) ---------------------
+
+    async def _handle_identify(self, msg: pb.Message) -> None:
+        """Handle ``VDSM_NOTIFICATION_IDENTIFY`` (§7.3.7).
+
+        Resolves each target vdSD and calls its
+        :meth:`~pyDSvDCAPI.vdsd.Vdsd.identify` method which invokes
+        the ``on_identify`` callback.
+        """
+        notif = msg.vdsm_send_identify
+
+        for dsuid_str in notif.dSUID:
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "identify: vdSD %s not found", dsuid_str,
+                )
+                continue
+
+            try:
+                await vdsd.identify()
+            except Exception:
+                logger.exception(
+                    "identify handler raised for vdSD %s",
+                    dsuid_str,
+                )
 
     # ---- setOutputChannelValue notification handler ------------------
 
@@ -1455,11 +1839,33 @@ class VdcHost:
 
     # ---- scene notification handlers ---------------------------------
 
+    @staticmethod
+    def _matches_zone_and_group(
+        vdsd: Any, output: Any, zone_id: int, group: int,
+    ) -> bool:
+        """Check whether *vdsd* / *output* matches the zone/group filter.
+
+        A value of ``0`` for either parameter means "not specified" and
+        always matches.  Otherwise the device's ``zone_id`` must equal
+        *zone_id*, and the output's ``active_group`` (the operationally
+        assigned dS Application ID from OutputSettings §4.8.2) or the
+        output's ``groups`` membership set must contain *group*.
+        """
+        if zone_id != 0 and getattr(vdsd, "zone_id", 0) != zone_id:
+            return False
+        if group != 0:
+            ag = getattr(output, "active_group", 0)
+            if ag != group and group not in output.groups:
+                return False
+        return True
+
     async def _handle_call_scene(self, msg: pb.Message) -> None:
         """Handle ``VDSM_NOTIFICATION_CALL_SCENE`` (§7.3.1)."""
         notif = msg.vdsm_send_call_scene
         scene = notif.scene
         force = notif.force
+        group = notif.group
+        zone_id = notif.zone_id
 
         for dsuid_str in notif.dSUID:
             vdsd = self._find_vdsd_by_dsuid(dsuid_str)
@@ -1474,19 +1880,29 @@ class VdcHost:
                     "callScene: vdSD %s has no output", dsuid_str
                 )
                 continue
-            output.call_scene(scene, force=force)
+            if not self._matches_zone_and_group(
+                vdsd, output, zone_id, group,
+            ):
+                logger.debug(
+                    "callScene: vdSD %s skipped (zone/group mismatch)",
+                    dsuid_str,
+                )
+                continue
+            output.call_scene(scene, force=force, group=group)
             # Trigger the on_channel_applied callback so the
             # integrator can react to the new values.
             await output.apply_pending_channels()
             logger.debug(
-                "callScene %d (force=%s) on vdSD %s",
-                scene, force, dsuid_str,
+                "callScene %d (force=%s, group=%d, zone=%d) on vdSD %s",
+                scene, force, group, zone_id, dsuid_str,
             )
 
     async def _handle_save_scene(self, msg: pb.Message) -> None:
         """Handle ``VDSM_NOTIFICATION_SAVE_SCENE`` (§7.3.2)."""
         notif = msg.vdsm_send_save_scene
         scene = notif.scene
+        group = notif.group
+        zone_id = notif.zone_id
 
         for dsuid_str in notif.dSUID:
             vdsd = self._find_vdsd_by_dsuid(dsuid_str)
@@ -1501,15 +1917,26 @@ class VdcHost:
                     "saveScene: vdSD %s has no output", dsuid_str
                 )
                 continue
+            if not self._matches_zone_and_group(
+                vdsd, output, zone_id, group,
+            ):
+                logger.debug(
+                    "saveScene: vdSD %s skipped (zone/group mismatch)",
+                    dsuid_str,
+                )
+                continue
             output.save_scene(scene)
             logger.debug(
-                "saveScene %d on vdSD %s", scene, dsuid_str
+                "saveScene %d (group=%d, zone=%d) on vdSD %s",
+                scene, group, zone_id, dsuid_str,
             )
 
     async def _handle_undo_scene(self, msg: pb.Message) -> None:
         """Handle ``VDSM_NOTIFICATION_UNDO_SCENE`` (§7.3.3)."""
         notif = msg.vdsm_send_undo_scene
         scene = notif.scene
+        group = notif.group
+        zone_id = notif.zone_id
 
         for dsuid_str in notif.dSUID:
             vdsd = self._find_vdsd_by_dsuid(dsuid_str)
@@ -1524,11 +1951,20 @@ class VdcHost:
                     "undoScene: vdSD %s has no output", dsuid_str
                 )
                 continue
-            output.undo_scene(scene)
+            if not self._matches_zone_and_group(
+                vdsd, output, zone_id, group,
+            ):
+                logger.debug(
+                    "undoScene: vdSD %s skipped (zone/group mismatch)",
+                    dsuid_str,
+                )
+                continue
+            output.undo_scene(scene, group=group)
             # Trigger callback for the restored values.
             await output.apply_pending_channels()
             logger.debug(
-                "undoScene %d on vdSD %s", scene, dsuid_str
+                "undoScene %d (group=%d, zone=%d) on vdSD %s",
+                scene, group, zone_id, dsuid_str,
             )
 
     async def _handle_set_local_priority(
@@ -1537,10 +1973,13 @@ class VdcHost:
         """Handle ``VDSM_NOTIFICATION_SET_LOCAL_PRIO`` (§7.3.4).
 
         Sets ``localPriority`` on the output if the referenced scene
-        does **not** have its ``dontCare`` flag set.
+        does **not** have its ``dontCare`` flag set.  Only acts if the
+        device matches the zone/group filter.
         """
         notif = msg.vdsm_send_set_local_prio
         scene = notif.scene
+        group = notif.group
+        zone_id = notif.zone_id
 
         for dsuid_str in notif.dSUID:
             vdsd = self._find_vdsd_by_dsuid(dsuid_str)
@@ -1549,12 +1988,17 @@ class VdcHost:
             output = getattr(vdsd, "output", None)
             if output is None:
                 continue
+            if not self._matches_zone_and_group(
+                vdsd, output, zone_id, group,
+            ):
+                continue
             entry = output.get_scene(scene)
             if entry is not None and not entry.get("dontCare", False):
                 output.local_priority = True
                 logger.debug(
-                    "setLocalPriority: set on vdSD %s (scene %d)",
-                    dsuid_str, scene,
+                    "setLocalPriority: set on vdSD %s "
+                    "(scene %d, group=%d, zone=%d)",
+                    dsuid_str, scene, group, zone_id,
                 )
 
     async def _handle_call_min_scene(
@@ -1564,10 +2008,13 @@ class VdcHost:
 
         If the device is off (primary channel at min), set it to the
         minimum brightness / value needed to become logically "on".
-        Only acts if the referenced scene does not have dontCare set.
+        Only acts if the referenced scene does not have dontCare set
+        and the device matches the zone/group filter.
         """
         notif = msg.vdsm_send_call_min_scene
         scene = notif.scene
+        group = notif.group
+        zone_id = notif.zone_id
 
         for dsuid_str in notif.dSUID:
             vdsd = self._find_vdsd_by_dsuid(dsuid_str)
@@ -1575,6 +2022,10 @@ class VdcHost:
                 continue
             output = getattr(vdsd, "output", None)
             if output is None:
+                continue
+            if not self._matches_zone_and_group(
+                vdsd, output, zone_id, group,
+            ):
                 continue
             entry = output.get_scene(scene)
             if entry is not None and entry.get("dontCare", False):

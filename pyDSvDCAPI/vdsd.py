@@ -143,6 +143,23 @@ InvokeActionCallback = Callable[
     Union[None, Awaitable[None]],
 ]
 
+#: Type alias for the identify callback.
+#:
+#: Signature::
+#:
+#:     async def callback(vdsd) -> None
+#:     # or sync:
+#:     def callback(vdsd) -> None
+#:
+#: ``vdsd`` is the :class:`Vdsd` instance that received the
+#: identify notification (§7.3.7).  The callback should trigger
+#: a visual or acoustic identification signal on the native
+#: device (e.g. blink an LED, beep, etc.).
+IdentifyCallback = Callable[
+    ["Vdsd"],
+    Union[None, Awaitable[None]],
+]
+
 
 # ---------------------------------------------------------------------------
 # Vdsd — one API-visible device
@@ -250,6 +267,9 @@ class Vdsd:
         device_class_version: Optional[str] = None,
         zone_id: int = 0,
         model_features: Optional[Set[str]] = None,
+        prog_mode: Optional[bool] = None,
+        current_config_id: Optional[str] = None,
+        configurations: Optional[List[str]] = None,
     ) -> None:
         # Auto-save must be disabled during construction.
         self._auto_save_enabled: bool = False
@@ -289,6 +309,11 @@ class Vdsd:
         self._model_features: Set[str] = (
             set(model_features) if model_features else set()
         )
+        self.prog_mode: Optional[bool] = prog_mode
+        self.current_config_id: Optional[str] = current_config_id
+        self._configurations: List[str] = (
+            list(configurations) if configurations else []
+        )
 
         # --- components -----------------------------------------------
         self._binary_inputs: Dict[int, BinaryInput] = {}
@@ -317,6 +342,7 @@ class Vdsd:
         self._control_values: Dict[str, Dict[str, Any]] = {}
         self._on_control_value: Optional[ControlValueCallback] = None
         self._on_invoke_action: Optional[InvokeActionCallback] = None
+        self._on_identify: Optional[IdentifyCallback] = None
 
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
@@ -374,6 +400,14 @@ class Vdsd:
         :meth:`remove_model_feature`.
         """
         return set(self._model_features)
+
+    @property
+    def configurations(self) -> List[str]:
+        """List of supported configuration/profile IDs (§4.1.1, read-only).
+
+        Set via constructor or persistence restore.
+        """
+        return list(self._configurations)
 
     @property
     def device(self) -> Device:
@@ -459,6 +493,40 @@ class Vdsd:
             )
             if asyncio.iscoroutine(result):
                 await result
+
+    @property
+    def on_identify(self) -> Optional[IdentifyCallback]:
+        """Callback invoked when the vdSM sends an identify notification (§7.3.7)."""
+        return self._on_identify
+
+    @on_identify.setter
+    def on_identify(
+        self, callback: Optional[IdentifyCallback]
+    ) -> None:
+        self._on_identify = callback
+
+    async def identify(self) -> None:
+        """Handle an identify notification from the vdSM (§7.3.7).
+
+        Triggers the ``on_identify`` callback so the user can
+        implement a visual/acoustic identification signal on the
+        native device (e.g. blink an LED, beep, vibrate).
+        """
+        logger.info(
+            "vdSD %s: identify requested", self._dsuid,
+        )
+        if self._on_identify is not None:
+            import asyncio as _asyncio
+
+            try:
+                result = self._on_identify(self)
+                if _asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                logger.exception(
+                    "on_identify callback raised for vdSD '%s'",
+                    self.name,
+                )
 
     @property
     def on_invoke_action(self) -> Optional[InvokeActionCallback]:
@@ -1167,6 +1235,8 @@ class Vdsd:
             # vdSD-specific properties
             "primaryGroup": int(self._primary_group),
             "zoneID": self.zone_id,
+            "progMode": self.prog_mode,
+            "currentConfigId": self.current_config_id,
         }
         # modelFeatures — each enabled feature is a boolean True element.
         if self._model_features:
@@ -1175,6 +1245,13 @@ class Vdsd:
             }
         else:
             props["modelFeatures"] = {}
+
+        # configurations (§4.1.1) — list of config/profile IDs.
+        if self._configurations:
+            props["configurations"] = {
+                str(i): {"id": cid}
+                for i, cid in enumerate(self._configurations)
+            }
 
         # Button input component properties (§4.2 / §4.1.2).
         if self._button_inputs:
@@ -1372,7 +1449,11 @@ class Vdsd:
             "deviceClass": self.device_class,
             "deviceClassVersion": self.device_class_version,
             "zoneID": self.zone_id,
+            "progMode": self.prog_mode,
+            "currentConfigId": self.current_config_id,
         }
+        if self._configurations:
+            node["configurations"] = list(self._configurations)
         if self._model_features:
             node["modelFeatures"] = sorted(self._model_features)
 
@@ -1499,6 +1580,13 @@ class Vdsd:
                 self.zone_id = int(state["zoneID"])
             if "modelFeatures" in state:
                 self._model_features = set(state["modelFeatures"])
+            if "progMode" in state:
+                val = state["progMode"]
+                self.prog_mode = bool(val) if val is not None else None
+            if "currentConfigId" in state:
+                self.current_config_id = state["currentConfigId"]
+            if "configurations" in state:
+                self._configurations = list(state["configurations"])
 
             # Restore button inputs.
             if "buttonInputs" in state:

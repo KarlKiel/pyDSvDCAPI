@@ -142,6 +142,20 @@ class SceneNumber(IntEnum):
     """All defined digitalSTROM scene command indices (0 – 127).
 
     Scenes 0–63 are group-related; scenes 64–127 are group-independent.
+
+    Scene commands operate on different layers depending on addressing:
+
+    * **Apartment** (zone_id=0, group=0): system-wide states such as
+      Absent/Present, Panic, Fire, weather alarms.  See `ApartmentScene`.
+    * **Zone** (zone_id>0, group=0): zone states such as Deep Off, Standby,
+      Zone Active, presence.  See `ZoneScene`.
+    * **Zone+Group** (zone_id>0, group>0): group-related commands – presets,
+      area scenes, stepping, temperature control, ventilation stages.
+      Semantic interpretation depends on the group; see `LightScene`,
+      `ShadeScene`, `AwningScene`, `AudioScene`, `TemperatureControlScene`,
+      `VentilationScene`.
+    * **Device** (single device): device-local operations such as Minimum,
+      Maximum, Stop, DeviceOn/Off.  See `DeviceScene`.
     """
 
     # --- Presets 0–4 ---
@@ -248,6 +262,287 @@ class SceneNumber(IntEnum):
     NO_HAIL = 91
     POLLUTION = 92
     BURGLARY = 93
+
+
+# ---------------------------------------------------------------------------
+#  Scene scope / addressing layer
+# ---------------------------------------------------------------------------
+
+
+@unique
+class SceneScope(IntEnum):
+    """Addressing scope at which a scene command is dispatched.
+
+    The digitalSTROM system dispatches scene commands at different layers.
+    The scope is determined by the ``zone_id`` and ``group`` parameters
+    in the call-scene notification:
+
+    * ``APARTMENT`` – zone_id=0, group=0: broadcast to every device in the
+      installation.
+    * ``ZONE`` – zone_id>0, group=0: broadcast to every device in the zone,
+      regardless of group membership.
+    * ``GROUP`` – zone_id>0, group>0 (or zone_id=0, group>0 for clusters):
+      multicast to all devices of the addressed group (preferred method).
+    * ``DEVICE`` – addressed to a single device (unicast).
+    """
+
+    APARTMENT = 0
+    ZONE = 1
+    GROUP = 2
+    DEVICE = 3
+
+
+# ---------------------------------------------------------------------------
+#  Apartment-level scenes (zone_id=0, group=0)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class ApartmentScene(IntEnum):
+    """Scene commands with apartment-wide scope.
+
+    These are dispatched with ``zone_id=0, group=0`` and represent system-wide
+    states and signals.  All values are in the group-independent range 64–127,
+    except for the apartment-mode/ventilation-level shortcuts that reuse
+    group-related IDs interpreted at apartment scope.
+
+    NOTE: Some known apartment states (sleeping/holiday, frost, day/night,
+    smoke, gas, malfunction, service-required) do not have documented scene
+    IDs and are typically implemented via state-change events or binary
+    input events instead.
+    """
+
+    # --- Access ---
+    PRESENT = 71             # residents came home (resets ABSENT)
+    ABSENT = 72              # residents left home
+
+    # --- Security ---
+    PANIC = 65               # undo via undo-scene
+    ALARM_1 = 74             # undo via undo-scene
+    FIRE = 76                # undo via undo-scene
+    ALARM_2 = 83             # undo via undo-scene
+    ALARM_3 = 84             # undo via undo-scene
+    ALARM_4 = 85             # undo via undo-scene
+    POLLUTION = 92           # undo via undo-scene
+    BURGLARY = 93            # undo via undo-scene
+
+    # --- Weather ---
+    WIND = 86                # reset by NO_WIND
+    NO_WIND = 87
+    RAIN = 88                # reset by NO_RAIN
+    NO_RAIN = 89
+    HAIL = 90                # reset by NO_HAIL (must be called with force flag)
+    NO_HAIL = 91
+
+
+# ---------------------------------------------------------------------------
+#  Zone-level scenes (zone_id>0, group=0)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class ZoneScene(IntEnum):
+    """Scene commands with zone scope (broadcast to all groups in a zone).
+
+    Dispatched with a specific ``zone_id`` and ``group=0``.  These control
+    the overall zone activity state and are group-independent.
+
+    NOTE: Zone-level presence detection (scene 71/72) is unusual and
+    typically only occurs when a presence sensor is configured as a zone
+    device.  Motion, open-window, and open-door states are normally
+    implemented via binary-input events rather than scene commands.
+    """
+
+    AUTO_STANDBY = 64        # zone auto-inactive
+    STANDBY = 67             # zone inactive, user may return soon
+    DEEP_OFF = 68            # zone inactive for longer time
+    SLEEPING = 69
+    WAKEUP = 70
+    PRESENT = 71             # zone presence detected
+    ABSENT = 72              # zone presence cleared
+    DOOR_BELL = 73           # signal only, no state change
+    ZONE_ACTIVE = 75         # zone will become active shortly
+
+
+# ---------------------------------------------------------------------------
+#  Group-specific scene interpretations (zone_id>0, group>0)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class LightScene(IntEnum):
+    """Scene interpretation for the Lights group (group 1 / YELLOW).
+
+    The same scene command IDs (0–9) have group-specific semantics.
+    For lights: Off/On.
+    """
+
+    OFF = 0
+    ON = 5
+    AREA_1_OFF = 1
+    AREA_1_ON = 6
+    AREA_2_OFF = 2
+    AREA_2_ON = 7
+    AREA_3_OFF = 3
+    AREA_3_ON = 8
+    AREA_4_OFF = 4
+    AREA_4_ON = 9
+
+
+@unique
+class ShadeScene(IntEnum):
+    """Scene interpretation for the Shades / Blinds group (group 2 / GREY).
+
+    For shades: Closed/Open instead of Off/On.
+    """
+
+    CLOSED = 0
+    OPEN = 5
+    AREA_1_CLOSED = 1
+    AREA_1_OPEN = 6
+    AREA_2_CLOSED = 2
+    AREA_2_OPEN = 7
+    AREA_3_CLOSED = 3
+    AREA_3_OPEN = 8
+    AREA_4_CLOSED = 4
+    AREA_4_OPEN = 9
+
+
+@unique
+class AwningScene(IntEnum):
+    """Scene interpretation for the Awning sub-group.
+
+    Awnings use simplified In/Out semantics without area sub-groups.
+    """
+
+    IN = 0
+    OUT = 5
+
+
+@unique
+class AudioScene(IntEnum):
+    """Scene interpretation for the Audio group (group 4 / CYAN).
+
+    For audio: Pause/Playing.  Volume control uses Area 1 DEC/INC
+    scene IDs (42/43) at device scope.
+
+    NOTE: Additional states (muted, power-off, standby, stop) do not
+    have documented scene IDs.
+    """
+
+    PAUSE = 0
+    PLAYING = 5
+
+
+# ---------------------------------------------------------------------------
+#  Device-level scenes (single device)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class DeviceScene(IntEnum):
+    """Scene commands addressed to a single device.
+
+    These are typically triggered by local pushbutton presses or by
+    the zone state machine for device-specific operations.
+    """
+
+    MINIMUM = 13
+    MAXIMUM = 14
+    STOP = 15
+    AUTO_OFF = 40             # slowly fade down to off
+    IMPULSE = 41              # short impulse on output
+    DEVICE_OFF = 50           # local pushbutton off
+    DEVICE_ON = 51            # local pushbutton on
+    SUN_PROTECTION = 56       # shade protection
+
+
+@unique
+class AudioDeviceScene(IntEnum):
+    """Device-level scenes specific to audio devices.
+
+    Volume stepping reuses Area 1 DEC/INC scene command IDs but is
+    addressed to a single device (not visible in UI but functional).
+    """
+
+    VOLUME_DOWN = 42
+    VOLUME_UP = 43
+
+
+@unique
+class ClimateDeviceScene(IntEnum):
+    """Device-level scenes specific to climate (heating/cooling) devices.
+
+    These overlap with ``TemperatureDeviceScene`` and provide an alias
+    with clearer naming for common operations.
+    """
+
+    POWER_ON = 29
+    POWER_OFF = 30
+    VALVE_PROTECTION = 31
+    FORCE_VALVE_OPEN = 32
+    FORCE_VALVE_CLOSE = 33
+    FORCE_FAN_MODE = 40
+    FORCE_DRY_MODE = 41
+    AUTOMATIC_MODE = 42
+
+
+# ---------------------------------------------------------------------------
+#  Apartment mode scenes  (reuse of group-related IDs at apartment scope)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class ApartmentTemperatureMode(IntEnum):
+    """Apartment-wide temperature mode scenes.
+
+    When called at apartment scope (zone_id=0, group=0) these group-related
+    scene IDs control the global temperature operating mode.
+    """
+
+    OFF = 0                   # temperature control off
+    HEATING = 1               # global heating mode
+    COOLING = 10              # global cooling mode
+    AUTOMATIC = 42            # automatic heating/cooling
+
+
+@unique
+class ApartmentVentilationLevel(IntEnum):
+    """Apartment-wide ventilation level scenes.
+
+    When called at apartment scope (zone_id=0, group=0) these control the
+    global ventilation level.  Values match ``VentilationScene``.
+    """
+
+    OFF = 0
+    LEVEL_1 = 5
+    LEVEL_2 = 17
+    LEVEL_3 = 18
+    LEVEL_4 = 19
+    BOOST = 6
+    NOISE_REDUCTION = 7
+    AUTOMATIC = 8
+    AUTO_LOUVER = 9
+
+
+# ---------------------------------------------------------------------------
+#  Zone temperature mode scenes  (zone+group scope)
+# ---------------------------------------------------------------------------
+
+
+@unique
+class ZoneTemperatureMode(IntEnum):
+    """Temperature mode scenes at zone level.
+
+    These are called with a specific zone_id and the temperature control
+    group.  Note that ``OFF`` here is scene 30 (Power Off), unlike
+    ``TemperatureControlScene.HEATING_OFF`` which is scene 0.
+    """
+
+    OFF = 30                  # power off climate device
+    HEATING = 1               # heating comfort
+    COOLING = 10              # cooling comfort
+    AUTOMATIC = 42            # automatic mode
 
 
 # ---------------------------------------------------------------------------

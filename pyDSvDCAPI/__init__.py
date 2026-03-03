@@ -5,6 +5,12 @@ __version__ = "0.1.0"
 from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
     ActionMode,
     AirFlowDirection,
+    ApartmentScene,
+    ApartmentTemperatureMode,
+    ApartmentVentilationLevel,
+    AudioDeviceScene,
+    AudioScene,
+    AwningScene,
     BinaryInputType,
     BinaryInputUsage,
     ButtonClickType,
@@ -13,12 +19,15 @@ from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
     ButtonGroup,
     ButtonMode,
     ButtonType,
+    ClimateDeviceScene,
     ColorGroup,
+    DeviceScene,
     EntityType,
     ErrorType,
     HeatingSystemCapability,
     HeatingSystemType,
     InputError,
+    LightScene,
     MessageType,
     OutputChannelType,
     OutputError,
@@ -30,11 +39,15 @@ from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
     ResultCode,
     SceneEffect,
     SceneNumber,
+    SceneScope,
     SensorType,
     SensorUsage,
+    ShadeScene,
     TemperatureControlScene,
     TemperatureDeviceScene,
     VentilationScene,
+    ZoneScene,
+    ZoneTemperatureMode,
 )
 
 from pyDSvDCAPI.dsuid import (  # noqa: F401
@@ -61,7 +74,13 @@ from pyDSvDCAPI.session import (  # noqa: F401
 
 from pyDSvDCAPI.vdc_host import (  # noqa: F401
     AUTO_SAVE_DELAY,
+    AuthenticateCallback,
     DEFAULT_VDC_PORT,
+    FirmwareUpgradeCallback,
+    IdentifyCallback,
+    PairCallback,
+    RemoveCallback,
+    SetConfigurationCallback,
     VdcHost,
 )
 
@@ -75,6 +94,7 @@ from pyDSvDCAPI.vdsd import (  # noqa: F401
     ControlValueCallback,
     ENTITY_TYPE_VDSD,
     Device,
+    IdentifyCallback as DeviceIdentifyCallback,
     InvokeActionCallback,
     Vdsd,
 )
@@ -112,6 +132,7 @@ from pyDSvDCAPI.device_property import (  # noqa: F401
 )
 
 from pyDSvDCAPI.output import (  # noqa: F401
+    DimChannelCallback,
     FUNCTION_CHANNELS,
     Output,
 )

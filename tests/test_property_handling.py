@@ -541,7 +541,7 @@ class TestVdcHostPropertyDispatch:
         host._on_message = user_handler
 
         msg = pb.Message()
-        msg.type = pb.VDSM_NOTIFICATION_IDENTIFY
+        msg.type = pb.VDSM_SEND_BYE  # not handled in _dispatch_message
         msg.message_id = 0
 
         from unittest.mock import MagicMock

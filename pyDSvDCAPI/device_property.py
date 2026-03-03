@@ -139,6 +139,7 @@ class DeviceProperty:
 
     def __init__(
         self,
+        *,
         vdsd: Vdsd,
         ds_index: int = 0,
         name: str = "",

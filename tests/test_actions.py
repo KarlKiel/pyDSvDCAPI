@@ -1013,7 +1013,7 @@ class TestVdcHostGenericRequest:
 
     @pytest.mark.asyncio
     async def test_unknown_method_no_callback(self):
-        """Without on_message, unknown methods should return ERR_NOT_FOUND."""
+        """Without on_message, unknown methods should return ERR_NOT_IMPLEMENTED."""
         host, _, _, _ = _make_stack()
         session = _make_mock_session()
 
@@ -1024,7 +1024,227 @@ class TestVdcHostGenericRequest:
         msg.vdsm_request_generic_request.methodname = "unknownMethod"
 
         resp = await host._handle_generic_request(session, msg)
-        assert resp.generic_response.code == pb.ERR_NOT_FOUND
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+
+
+# ===========================================================================
+# §7.4 configuration GenericRequest methods  (pair, authenticate, …)
+# ===========================================================================
+
+
+def _make_config_gr_msg(
+    dsuid: str, method: str, **params: Any
+) -> pb.Message:
+    """Build a ``VDSM_REQUEST_GENERIC_REQUEST`` with simple scalar params."""
+    msg = pb.Message()
+    msg.type = pb.VDSM_REQUEST_GENERIC_REQUEST
+    msg.message_id = 200
+    msg.vdsm_request_generic_request.dSUID = dsuid
+    msg.vdsm_request_generic_request.methodname = method
+
+    for key, val in params.items():
+        elem = msg.vdsm_request_generic_request.params.add()
+        elem.name = key
+        if isinstance(val, bool):
+            elem.value.v_bool = val
+        elif isinstance(val, int):
+            elem.value.v_int64 = val
+        elif isinstance(val, float):
+            elem.value.v_double = val
+        elif isinstance(val, str):
+            elem.value.v_string = val
+    return msg
+
+
+class TestGenericRequestPair:
+    """Tests for the ``pair`` GenericRequest handler (§7.4.1)."""
+
+    @pytest.mark.asyncio
+    async def test_pair_callback_called(self):
+        host, _, _, _ = _make_stack()
+        received = []
+
+        async def on_pair(dsuid, establish, timeout, params):
+            received.append((dsuid, establish, timeout, params))
+
+        host._on_pair = on_pair
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "pair",
+            establish=True, timeout=30,
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_OK
+        assert len(received) == 1
+        assert received[0][0] == str(host.dsuid)
+        assert received[0][1] is True
+        assert received[0][2] == 30
+
+    @pytest.mark.asyncio
+    async def test_pair_no_callback(self):
+        host, _, _, _ = _make_stack()
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(str(host.dsuid), "pair", establish=False)
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+
+    @pytest.mark.asyncio
+    async def test_pair_callback_error(self):
+        host, _, _, _ = _make_stack()
+
+        async def on_pair(dsuid, establish, timeout, params):
+            raise RuntimeError("pair failed")
+
+        host._on_pair = on_pair
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(str(host.dsuid), "pair", establish=True)
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+        assert "pair failed" in resp.generic_response.description
+
+
+class TestGenericRequestAuthenticate:
+    """Tests for the ``authenticate`` GenericRequest handler (§7.4.2)."""
+
+    @pytest.mark.asyncio
+    async def test_authenticate_callback_called(self):
+        host, _, _, _ = _make_stack()
+        received = []
+
+        async def on_auth(dsuid, auth_data, auth_scope, params):
+            received.append((dsuid, auth_data, auth_scope, params))
+
+        host._on_authenticate = on_auth
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "authenticate",
+            authData='{"token":"abc"}', authScope="user1",
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_OK
+        assert len(received) == 1
+        assert received[0][1] == '{"token":"abc"}'
+        assert received[0][2] == "user1"
+
+    @pytest.mark.asyncio
+    async def test_authenticate_no_callback(self):
+        host, _, _, _ = _make_stack()
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "authenticate", authData="x",
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+
+
+class TestGenericRequestFirmwareUpgrade:
+    """Tests for the ``firmwareUpgrade`` GenericRequest handler (§7.4.3)."""
+
+    @pytest.mark.asyncio
+    async def test_firmware_upgrade_callback_called(self):
+        host, _, _, _ = _make_stack()
+        received = []
+
+        async def on_fw(dsuid, check_only, clear_settings, params):
+            received.append((dsuid, check_only, clear_settings, params))
+
+        host._on_firmware_upgrade = on_fw
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "firmwareUpgrade",
+            checkonly=True, clearsettings=False,
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_OK
+        assert len(received) == 1
+        assert received[0][1] is True   # check_only
+        assert received[0][2] is False  # clear_settings
+
+    @pytest.mark.asyncio
+    async def test_firmware_upgrade_no_callback(self):
+        host, _, _, _ = _make_stack()
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "firmwareUpgrade", checkonly=False,
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+
+    @pytest.mark.asyncio
+    async def test_firmware_upgrade_callback_error(self):
+        host, _, _, _ = _make_stack()
+
+        async def on_fw(dsuid, check_only, clear_settings, params):
+            raise RuntimeError("upgrade failed")
+
+        host._on_firmware_upgrade = on_fw
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "firmwareUpgrade", checkonly=False,
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+        assert "upgrade failed" in resp.generic_response.description
+
+
+class TestGenericRequestSetConfiguration:
+    """Tests for the ``setConfiguration`` GenericRequest handler (§7.4.4)."""
+
+    @pytest.mark.asyncio
+    async def test_set_configuration_callback_called(self):
+        host, _, _, _ = _make_stack()
+        received = []
+
+        async def on_cfg(dsuid, config_id, params):
+            received.append((dsuid, config_id, params))
+
+        host._on_set_configuration = on_cfg
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "setConfiguration", id="profile_2",
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_OK
+        assert len(received) == 1
+        assert received[0][1] == "profile_2"
+        assert received[0][2] == {}  # 'id' stripped from params
+
+    @pytest.mark.asyncio
+    async def test_set_configuration_no_callback(self):
+        host, _, _, _ = _make_stack()
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "setConfiguration", id="x",
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+
+    @pytest.mark.asyncio
+    async def test_set_configuration_callback_error(self):
+        host, _, _, _ = _make_stack()
+
+        async def on_cfg(dsuid, config_id, params):
+            raise ValueError("bad config")
+
+        host._on_set_configuration = on_cfg
+        session = _make_mock_session()
+
+        msg = _make_config_gr_msg(
+            str(host.dsuid), "setConfiguration", id="x",
+        )
+        resp = await host._handle_generic_request(session, msg)
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+        assert "bad config" in resp.generic_response.description
 
 
 # ===========================================================================

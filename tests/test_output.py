@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -19,6 +19,7 @@ from pyDSvDCAPI.enums import (
     OutputUsage,
 )
 from pyDSvDCAPI.output import Output
+from pyDSvDCAPI.output_channel import OutputChannel
 from pyDSvDCAPI.session import VdcSession
 from pyDSvDCAPI.vdc import Vdc
 from pyDSvDCAPI.vdc_host import VdcHost
@@ -1952,3 +1953,798 @@ class TestVdcHostSceneDispatch:
 
         entry = out.get_scene(5)
         assert entry["channels"][0]["value"] == 55.0
+
+
+# ===========================================================================
+# dimChannel (§7.3.5) — Output.dim_channel + VdcHost dispatch
+# ===========================================================================
+
+
+class TestDimChannel:
+    """Tests for the Output.dim_channel method and on_dim_channel callback."""
+
+    def test_on_dim_channel_property_default_none(self):
+        """on_dim_channel defaults to None."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd)
+        assert out.on_dim_channel is None
+
+    def test_on_dim_channel_property_set_get(self):
+        """on_dim_channel can be set and retrieved."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd)
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+        assert out.on_dim_channel is cb
+
+    def test_on_dim_channel_property_clear(self):
+        """on_dim_channel can be cleared back to None."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd)
+        out.on_dim_channel = AsyncMock()
+        out.on_dim_channel = None
+        assert out.on_dim_channel is None
+
+    @pytest.mark.asyncio
+    async def test_dim_channel_calls_callback(self):
+        """dim_channel() invokes the callback with correct arguments."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        ch = out.get_channel(0)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        await out.dim_channel(ch, mode=1, area=2)
+        cb.assert_awaited_once_with(out, ch, 1, 2)
+
+    @pytest.mark.asyncio
+    async def test_dim_channel_no_callback_no_error(self):
+        """dim_channel() with no callback does not raise."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        ch = out.get_channel(0)
+
+        await out.dim_channel(ch, mode=0, area=0)  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_dim_channel_callback_exception_caught(self):
+        """dim_channel() catches exceptions from the callback."""
+        host, _vdc, _device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        ch = out.get_channel(0)
+
+        cb = AsyncMock(side_effect=RuntimeError("boom"))
+        out.on_dim_channel = cb
+
+        await out.dim_channel(ch, mode=-1, area=0)  # Should not raise
+        cb.assert_awaited_once()
+
+
+class TestVdcHostDimChannelDispatch:
+    """Tests for VdcHost dispatch of VDSM_NOTIFICATION_DIM_CHANNEL."""
+
+    @staticmethod
+    def _make_dim_msg(dsuid: str, *, mode: int = 1, area: int = 0,
+                      channel: int = 0, channel_id: str = "") -> "pb.Message":
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_DIM_CHANNEL
+        msg.vdsm_send_dim_channel.dSUID.append(dsuid)
+        msg.vdsm_send_dim_channel.mode = mode
+        msg.vdsm_send_dim_channel.area = area
+        msg.vdsm_send_dim_channel.channel = channel
+        if channel_id:
+            msg.vdsm_send_dim_channel.channelId = channel_id
+        return msg
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_default_channel(self):
+        """dimChannel with channel=0 resolves to first (default) channel."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        msg = self._make_dim_msg(str(vdsd.dsuid), mode=1, area=0, channel=0)
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        cb.assert_awaited_once()
+        args = cb.await_args[0]
+        assert args[0] is out       # output
+        assert args[1] is out.get_channel(0)  # default channel
+        assert args[2] == 1         # mode
+        assert args[3] == 0         # area
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_by_channel_type(self):
+        """dimChannel with numeric channel type resolves correctly."""
+        from pyDSvDCAPI.enums import OutputChannelType
+
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        brightness_type = int(OutputChannelType.BRIGHTNESS)
+        msg = self._make_dim_msg(
+            str(vdsd.dsuid), mode=-1, area=1, channel=brightness_type,
+        )
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        cb.assert_awaited_once()
+        args = cb.await_args[0]
+        assert args[0] is out
+        assert args[1].channel_type == OutputChannelType.BRIGHTNESS
+        assert args[2] == -1
+        assert args[3] == 1
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_by_channel_id(self):
+        """dimChannel with channelId (API v3) resolves by name."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        ch = out.get_channel(0)
+        channel_name = ch.name  # The name of the first channel
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        msg = self._make_dim_msg(
+            str(vdsd.dsuid), mode=0, area=0, channel_id=channel_name,
+        )
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        cb.assert_awaited_once()
+        args = cb.await_args[0]
+        assert args[0] is out
+        assert args[1] is ch
+        assert args[2] == 0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_unknown_dsuid_skipped(self):
+        """dimChannel for unknown dSUID is silently skipped."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        msg = self._make_dim_msg("0000000000000000000000000000000000",
+                                 mode=1)
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        cb.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_no_output_skipped(self):
+        """dimChannel for vdSD without output is silently skipped."""
+        host, vdc, device, vdsd = _make_stack()
+        # Do NOT set an output on the vdSD
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        msg = self._make_dim_msg(str(vdsd.dsuid), mode=1)
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_mode_stop(self):
+        """dimChannel with mode=0 (stop) is dispatched correctly."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        msg = self._make_dim_msg(str(vdsd.dsuid), mode=0, area=3)
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        cb.assert_awaited_once()
+        args = cb.await_args[0]
+        assert args[2] == 0   # mode = stop
+        assert args[3] == 3   # area
+
+    @pytest.mark.asyncio
+    async def test_dispatch_dim_area_values(self):
+        """dimChannel passes area values 1-4 through correctly."""
+        host, vdc, device, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+
+        cb = AsyncMock()
+        out.on_dim_channel = cb
+
+        for area_val in (1, 2, 3, 4):
+            cb.reset_mock()
+            msg = self._make_dim_msg(str(vdsd.dsuid), mode=1, area=area_val)
+            session = _make_mock_session()
+            await host._dispatch_message(session, msg)
+
+            cb.assert_awaited_once()
+            assert cb.await_args[0][3] == area_val
+
+
+# ===========================================================================
+# W6 — Scene zone/group filtering and per-group undo (§7.3.1–§7.3.6)
+# ===========================================================================
+
+
+class TestSceneGroupUndoTracking:
+    """Tests for per-group undo tracking in Output.call_scene / undo_scene."""
+
+    def test_call_scene_stores_undo_per_group(self):
+        """Each call_scene with a different group should create a
+        separate undo snapshot."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        # Call scene for group 1.
+        out.call_scene(0, group=1)
+        assert ch.value == 0.0
+
+        ch.set_value_from_vdsm(75.0)
+        ch.confirm_applied()
+
+        # Call scene for group 2.
+        out.call_scene(5, group=2)
+        assert ch.value == 100.0
+
+        # Undo group 2 → restore 75.
+        out.undo_scene(5, group=2)
+        assert ch.value == 75.0
+
+        # Undo group 1 → restore 50.
+        out.undo_scene(0, group=1)
+        assert ch.value == 50.0
+
+    def test_undo_wrong_group_ignored(self):
+        """undo_scene with a non-matching group does nothing."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        out.call_scene(0, group=1)
+        assert ch.value == 0.0
+
+        # Undo with group=2 → nothing happens.
+        out.undo_scene(0, group=2)
+        assert ch.value == 0.0
+
+    def test_undo_default_group_zero(self):
+        """call_scene / undo_scene without explicit group uses group=0."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        out.call_scene(0)
+        assert ch.value == 0.0
+
+        out.undo_scene(0)
+        assert ch.value == 42.0
+
+    def test_second_call_same_group_overwrites_snapshot(self):
+        """A second call_scene for the same group replaces the snapshot."""
+        _, _, _, vdsd = _make_stack()
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        vdsd.set_output(out)
+
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(10.0)
+        ch.confirm_applied()
+
+        out.call_scene(0, group=1)   # snapshot(1)=10
+        assert ch.value == 0.0
+
+        ch.set_value_from_vdsm(20.0)
+        ch.confirm_applied()
+
+        out.call_scene(5, group=1)   # snapshot(1)=20 (overwrites 10)
+        assert ch.value == 100.0
+
+        out.undo_scene(5, group=1)
+        assert ch.value == 20.0      # restored to 20, not 10
+
+
+class TestSceneZoneGroupFiltering:
+    """Tests for zone/group filtering in VdcHost scene dispatch."""
+
+    def _make_registered_stack(
+        self, *, zone_id=0, primary_group=ColorGroup.YELLOW,
+        active_group=None, groups=None,
+    ):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(
+            device,
+            primary_group=primary_group,
+            zone_id=zone_id,
+        )
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        # Set the operationally relevant active_group on the output.
+        if active_group is not None:
+            out.active_group = active_group
+        else:
+            out.active_group = int(primary_group)
+        if groups:
+            out.groups = groups
+        vdsd.set_output(out)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host.add_vdc(vdc)
+        host._cancel_auto_save()
+        return host, vdc, device, vdsd, out
+
+    # --- callScene filtering ---
+
+    @pytest.mark.asyncio
+    async def test_call_scene_matching_group_applies(self):
+        """callScene with matching group applies the scene."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0
+        msg.vdsm_send_call_scene.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_call_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 0.0
+
+    @pytest.mark.asyncio
+    async def test_call_scene_wrong_group_skips(self):
+        """callScene with non-matching group skips the device."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0
+        msg.vdsm_send_call_scene.group = int(ColorGroup.GREY)
+        msg.vdsm_send_call_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 50.0  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_call_scene_wrong_zone_skips(self):
+        """callScene with non-matching zone skips the device."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0
+        msg.vdsm_send_call_scene.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_call_scene.zone_id = 99  # wrong zone
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 50.0  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_call_scene_zero_group_matches_all(self):
+        """group=0 means 'not specified' and matches any device."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0
+        # group and zone_id default to 0 (not specified)
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 0.0  # applied
+
+    @pytest.mark.asyncio
+    async def test_call_scene_secondary_group_matches(self):
+        """callScene matches if group is in output.groups (secondary)."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+            groups={int(ColorGroup.GREY)},
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_scene.scene = 0
+        msg.vdsm_send_call_scene.group = int(ColorGroup.GREY)
+        msg.vdsm_send_call_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 0.0  # applied — GREY is in output.groups
+
+    # --- saveScene filtering ---
+
+    @pytest.mark.asyncio
+    async def test_save_scene_matching_group_saves(self):
+        """saveScene with matching group saves the scene."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(77.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SAVE_SCENE
+        msg.vdsm_send_save_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_save_scene.scene = 5
+        msg.vdsm_send_save_scene.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_save_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        entry = out.get_scene(5)
+        assert entry["channels"][0]["value"] == 77.0
+
+    @pytest.mark.asyncio
+    async def test_save_scene_wrong_group_skips(self):
+        """saveScene with non-matching group doesn't save."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(77.0)
+        ch.confirm_applied()
+
+        # Get the existing scene 5 value before.
+        entry_before = out.get_scene(5)
+        val_before = entry_before["channels"][0]["value"]
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SAVE_SCENE
+        msg.vdsm_send_save_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_save_scene.scene = 5
+        msg.vdsm_send_save_scene.group = int(ColorGroup.GREY)  # wrong
+        msg.vdsm_send_save_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+
+        entry_after = out.get_scene(5)
+        assert entry_after["channels"][0]["value"] == val_before
+
+    # --- undoScene filtering ---
+
+    @pytest.mark.asyncio
+    async def test_undo_scene_matching_group_undoes(self):
+        """undoScene with matching group and matching scene undoes."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        # Call scene with group=1 via dispatch.
+        call_msg = pb.Message()
+        call_msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        call_msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        call_msg.vdsm_send_call_scene.scene = 0
+        call_msg.vdsm_send_call_scene.group = int(ColorGroup.YELLOW)
+        call_msg.vdsm_send_call_scene.zone_id = 10
+        session = _make_mock_session()
+        await host._dispatch_message(session, call_msg)
+        assert ch.value == 0.0
+
+        # Undo with same group.
+        undo_msg = pb.Message()
+        undo_msg.type = pb.VDSM_NOTIFICATION_UNDO_SCENE
+        undo_msg.vdsm_send_undo_scene.dSUID.append(str(vdsd.dsuid))
+        undo_msg.vdsm_send_undo_scene.scene = 0
+        undo_msg.vdsm_send_undo_scene.group = int(ColorGroup.YELLOW)
+        undo_msg.vdsm_send_undo_scene.zone_id = 10
+        await host._dispatch_message(session, undo_msg)
+        assert ch.value == 42.0
+
+    @pytest.mark.asyncio
+    async def test_undo_scene_wrong_group_no_undo(self):
+        """undoScene with different group does not undo."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+            groups={int(ColorGroup.GREY)},
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(42.0)
+        ch.confirm_applied()
+
+        # Call scene with group YELLOW.
+        call_msg = pb.Message()
+        call_msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        call_msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        call_msg.vdsm_send_call_scene.scene = 0
+        call_msg.vdsm_send_call_scene.group = int(ColorGroup.YELLOW)
+        call_msg.vdsm_send_call_scene.zone_id = 10
+        session = _make_mock_session()
+        await host._dispatch_message(session, call_msg)
+        assert ch.value == 0.0
+
+        # Undo with group GREY → should NOT undo (different group).
+        undo_msg = pb.Message()
+        undo_msg.type = pb.VDSM_NOTIFICATION_UNDO_SCENE
+        undo_msg.vdsm_send_undo_scene.dSUID.append(str(vdsd.dsuid))
+        undo_msg.vdsm_send_undo_scene.scene = 0
+        undo_msg.vdsm_send_undo_scene.group = int(ColorGroup.GREY)
+        undo_msg.vdsm_send_undo_scene.zone_id = 10
+        await host._dispatch_message(session, undo_msg)
+        assert ch.value == 0.0  # unchanged
+
+    # --- setLocalPriority filtering ---
+
+    @pytest.mark.asyncio
+    async def test_set_local_priority_matching_group(self):
+        """setLocalPriority with matching group sets LP."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        assert out.local_priority is False
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SET_LOCAL_PRIO
+        msg.vdsm_send_set_local_prio.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_set_local_prio.scene = 0
+        msg.vdsm_send_set_local_prio.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_set_local_prio.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert out.local_priority is True
+
+    @pytest.mark.asyncio
+    async def test_set_local_priority_wrong_group_skips(self):
+        """setLocalPriority with non-matching group does not set LP."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        assert out.local_priority is False
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_SET_LOCAL_PRIO
+        msg.vdsm_send_set_local_prio.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_set_local_prio.scene = 0
+        msg.vdsm_send_set_local_prio.group = int(ColorGroup.GREY)
+        msg.vdsm_send_set_local_prio.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert out.local_priority is False
+
+    # --- callMinScene filtering ---
+
+    @pytest.mark.asyncio
+    async def test_call_min_scene_matching_group_applies(self):
+        """callMinScene with matching group sets min-on."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(0.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_MIN_SCENE
+        msg.vdsm_send_call_min_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_min_scene.scene = 0
+        msg.vdsm_send_call_min_scene.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_call_min_scene.zone_id = 10
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value > 0.0
+
+    @pytest.mark.asyncio
+    async def test_call_min_scene_wrong_zone_skips(self):
+        """callMinScene with non-matching zone does not act."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(0.0)
+        ch.confirm_applied()
+
+        msg = pb.Message()
+        msg.type = pb.VDSM_NOTIFICATION_CALL_MIN_SCENE
+        msg.vdsm_send_call_min_scene.dSUID.append(str(vdsd.dsuid))
+        msg.vdsm_send_call_min_scene.scene = 0
+        msg.vdsm_send_call_min_scene.group = int(ColorGroup.YELLOW)
+        msg.vdsm_send_call_min_scene.zone_id = 99  # wrong zone
+
+        session = _make_mock_session()
+        await host._dispatch_message(session, msg)
+        assert ch.value == 0.0  # unchanged
+
+    # --- callScene passes group to Output for undo tracking ---
+
+    @pytest.mark.asyncio
+    async def test_call_and_undo_via_dispatch_uses_group(self):
+        """Full roundtrip: callScene dispatch stores group-keyed undo
+        that can only be undone with the same group."""
+        host, _, _, vdsd, out = self._make_registered_stack(
+            zone_id=10, primary_group=ColorGroup.YELLOW,
+        )
+        ch = out.get_channel(0)
+        ch.set_value_from_vdsm(55.0)
+        ch.confirm_applied()
+
+        session = _make_mock_session()
+        grp = int(ColorGroup.YELLOW)
+
+        # Call scene 0 with group.
+        call_msg = pb.Message()
+        call_msg.type = pb.VDSM_NOTIFICATION_CALL_SCENE
+        call_msg.vdsm_send_call_scene.dSUID.append(str(vdsd.dsuid))
+        call_msg.vdsm_send_call_scene.scene = 0
+        call_msg.vdsm_send_call_scene.group = grp
+        call_msg.vdsm_send_call_scene.zone_id = 10
+        await host._dispatch_message(session, call_msg)
+        assert ch.value == 0.0
+
+        # Undo with group.
+        undo_msg = pb.Message()
+        undo_msg.type = pb.VDSM_NOTIFICATION_UNDO_SCENE
+        undo_msg.vdsm_send_undo_scene.dSUID.append(str(vdsd.dsuid))
+        undo_msg.vdsm_send_undo_scene.scene = 0
+        undo_msg.vdsm_send_undo_scene.group = grp
+        undo_msg.vdsm_send_undo_scene.zone_id = 10
+        await host._dispatch_message(session, undo_msg)
+        assert ch.value == 55.0
+
+
+class TestMatchesZoneAndGroup:
+    """Unit tests for VdcHost._matches_zone_and_group helper.
+
+    Group matching uses output.active_group (the operationally assigned
+    dS Application ID from OutputSettings §4.8.2), not vdsd.primary_group.
+    """
+
+    def test_both_zero_matches(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(vdsd, out, 0, 0) is True
+
+    def test_matching_zone_and_active_group(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(
+            vdsd, out, 42, int(ColorGroup.YELLOW)
+        ) is True
+
+    def test_wrong_zone(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(
+            vdsd, out, 99, int(ColorGroup.YELLOW)
+        ) is False
+
+    def test_wrong_group(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(
+            vdsd, out, 42, int(ColorGroup.GREY)
+        ) is False
+
+    def test_primary_group_alone_does_not_match(self):
+        """primary_group on vdsd is NOT used — only active_group matters."""
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(
+            primary_group=ColorGroup.YELLOW, zone_id=42,
+        )
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.GREY)  # different from primary
+        assert host._matches_zone_and_group(
+            vdsd, out, 42, int(ColorGroup.YELLOW)
+        ) is False  # YELLOW is primary but NOT active_group
+
+    def test_secondary_group_matches(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        out.groups = {int(ColorGroup.GREY)}
+        assert host._matches_zone_and_group(
+            vdsd, out, 42, int(ColorGroup.GREY)
+        ) is True
+
+    def test_zone_zero_matches_any(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(
+            vdsd, out, 0, int(ColorGroup.YELLOW)
+        ) is True
+
+    def test_group_zero_matches_any(self):
+        host = _make_host()
+        _, _, _, vdsd = _make_stack(zone_id=42)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out.active_group = int(ColorGroup.YELLOW)
+        assert host._matches_zone_and_group(
+            vdsd, out, 42, 0
+        ) is True

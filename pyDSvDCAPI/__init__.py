@@ -53,6 +53,7 @@ from pyDSvDCAPI.persistence import PropertyStore  # noqa: F401
 
 from pyDSvDCAPI.session import (  # noqa: F401
     SUPPORTED_API_VERSION,
+    HelloCallback,
     MessageCallback,
     SessionState,
     VdcSession,
@@ -74,7 +75,16 @@ from pyDSvDCAPI.vdsd import (  # noqa: F401
     ControlValueCallback,
     ENTITY_TYPE_VDSD,
     Device,
+    InvokeActionCallback,
     Vdsd,
+)
+
+from pyDSvDCAPI.actions import (  # noqa: F401
+    ActionParameter,
+    CustomAction,
+    DeviceActionDescription,
+    DynamicAction,
+    StandardAction,
 )
 
 from pyDSvDCAPI.binary_input import BinaryInput  # noqa: F401
@@ -91,6 +101,16 @@ from pyDSvDCAPI.sensor_input import SensorInput  # noqa: F401
 
 from pyDSvDCAPI.device_event import DeviceEvent  # noqa: F401
 
+from pyDSvDCAPI.device_state import DeviceState  # noqa: F401
+
+from pyDSvDCAPI.device_property import (  # noqa: F401
+    PROPERTY_TYPE_ENUMERATION,
+    PROPERTY_TYPE_NUMERIC,
+    PROPERTY_TYPE_STRING,
+    VALID_PROPERTY_TYPES,
+    DeviceProperty,
+)
+
 from pyDSvDCAPI.output import (  # noqa: F401
     FUNCTION_CHANNELS,
     Output,
@@ -104,8 +124,10 @@ from pyDSvDCAPI.output_channel import (  # noqa: F401
 )
 
 from pyDSvDCAPI.property_handling import (  # noqa: F401
+    NO_VALUE,
     build_get_property_response,
     dict_to_elements,
     elements_to_dict,
+    expand_setproperty_wildcards,
     match_query,
 )

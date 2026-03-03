@@ -428,7 +428,7 @@ class TestRaiseDeviceEvent:
 
     @pytest.mark.asyncio
     async def test_raise_event_sends_notification(self):
-        """raise_event sends a VDC_SEND_PUSH_PROPERTY message."""
+        """raise_event sends a VDC_SEND_PUSH_NOTIFICATION message."""
         _, _, _, vdsd = _make_stack()
         evt = DeviceEvent(vdsd=vdsd, ds_index=0, name="bell")
 
@@ -437,7 +437,7 @@ class TestRaiseDeviceEvent:
 
         session.send_notification.assert_awaited_once()
         msg = session.send_notification.call_args[0][0]
-        assert msg.type == pb.VDC_SEND_PUSH_PROPERTY
+        assert msg.type == pb.VDC_SEND_PUSH_NOTIFICATION
 
     @pytest.mark.asyncio
     async def test_raise_event_contains_dsuid(self):
@@ -449,16 +449,11 @@ class TestRaiseDeviceEvent:
         await evt.raise_event(session)
 
         msg = session.send_notification.call_args[0][0]
-        assert msg.vdc_send_push_property.dSUID == str(vdsd.dsuid)
+        assert msg.vdc_send_push_notification.dSUID == str(vdsd.dsuid)
 
     @pytest.mark.asyncio
     async def test_raise_event_wire_contains_deviceevents(self):
-        """The serialized message carries the deviceevents field.
-
-        Since vdc_SendPushProperty doesn't know about field 3 in Python,
-        we verify by deserializing the sub-message bytes as
-        vdc_SendPushNotification.
-        """
+        """The message carries the deviceevents field natively."""
         _, _, _, vdsd = _make_stack()
         evt = DeviceEvent(vdsd=vdsd, ds_index=0, name="bell")
 
@@ -466,15 +461,11 @@ class TestRaiseDeviceEvent:
         await evt.raise_event(session)
 
         msg = session.send_notification.call_args[0][0]
-        # Serialize the push_property sub-message, then re-parse
-        # as vdc_SendPushNotification to check field 3 (deviceevents).
-        push_bytes = msg.vdc_send_push_property.SerializeToString()
-        notif = pb.vdc_SendPushNotification()
-        notif.ParseFromString(push_bytes)
+        notif = msg.vdc_send_push_notification
 
         assert notif.dSUID == str(vdsd.dsuid)
         assert len(notif.deviceevents) == 1
-        assert notif.deviceevents[0].name == "0"
+        assert notif.deviceevents[0].name == "bell"
 
     @pytest.mark.asyncio
     async def test_raise_event_different_index(self):
@@ -486,11 +477,9 @@ class TestRaiseDeviceEvent:
         await evt.raise_event(session)
 
         msg = session.send_notification.call_args[0][0]
-        push_bytes = msg.vdc_send_push_property.SerializeToString()
-        notif = pb.vdc_SendPushNotification()
-        notif.ParseFromString(push_bytes)
+        notif = msg.vdc_send_push_notification
 
-        assert notif.deviceevents[0].name == "2"
+        assert notif.deviceevents[0].name == "motion"
 
     @pytest.mark.asyncio
     async def test_raise_event_uses_vdsd_session(self):

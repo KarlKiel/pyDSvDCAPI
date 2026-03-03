@@ -480,12 +480,12 @@ class TestBinaryInputPushNotification:
 
         session.send_notification.assert_called_once()
         msg = session.send_notification.call_args[0][0]
-        assert msg.type == pb.VDC_SEND_PUSH_PROPERTY
-        assert msg.vdc_send_push_property.dSUID == str(vdsd.dsuid)
+        assert msg.type == pb.VDC_SEND_PUSH_NOTIFICATION
+        assert msg.vdc_send_push_notification.dSUID == str(vdsd.dsuid)
 
         # Verify the pushed properties tree.
         props = elements_to_dict(
-            msg.vdc_send_push_property.properties
+            msg.vdc_send_push_notification.changedproperties
         )
         assert "binaryInputStates" in props
         states = props["binaryInputStates"]
@@ -536,7 +536,7 @@ class TestBinaryInputPushNotification:
         session.send_notification.assert_called_once()
         msg = session.send_notification.call_args[0][0]
         props = elements_to_dict(
-            msg.vdc_send_push_property.properties
+            msg.vdc_send_push_notification.changedproperties
         )
         states = props["binaryInputStates"]["0"]
         assert states["extendedValue"] == 2
@@ -558,7 +558,7 @@ class TestBinaryInputPushNotification:
         session.send_notification.assert_called_once()
         msg = session.send_notification.call_args[0][0]
         props = elements_to_dict(
-            msg.vdc_send_push_property.properties
+            msg.vdc_send_push_notification.changedproperties
         )
         assert props["binaryInputStates"]["0"]["error"] == int(
             InputError.SHORT_CIRCUIT
@@ -612,14 +612,14 @@ class TestBinaryInputPushNotification:
         # First call pushes index 0.
         msg0 = session.send_notification.call_args_list[0][0][0]
         props0 = elements_to_dict(
-            msg0.vdc_send_push_property.properties
+            msg0.vdc_send_push_notification.changedproperties
         )
         assert "0" in props0["binaryInputStates"]
 
         # Second call pushes index 1.
         msg1 = session.send_notification.call_args_list[1][0][0]
         props1 = elements_to_dict(
-            msg1.vdc_send_push_property.properties
+            msg1.vdc_send_push_notification.changedproperties
         )
         assert "1" in props1["binaryInputStates"]
 

@@ -16,7 +16,7 @@ State updates
 The physical device feeds new readings into the sensor via
 :meth:`SensorInput.update_value`.  When the vdSD is announced and a
 session is active, the library automatically pushes a
-``VDC_SEND_PUSH_PROPERTY`` notification to the vdSM carrying the
+``VDC_SEND_PUSH_NOTIFICATION`` notification to the vdSM carrying the
 ``sensorStates`` property change (§7.1.3).
 
 Push throttling
@@ -600,7 +600,7 @@ class SensorInput:
         await self._do_push(session)
 
     async def _do_push(self, session: VdcSession) -> None:
-        """Send the ``VDC_SEND_PUSH_PROPERTY`` notification.
+        """Send the ``VDC_SEND_PUSH_NOTIFICATION`` notification.
 
         This is the low-level push that always sends, updating
         internal tracking state (last push time, last value key,
@@ -615,10 +615,10 @@ class SensorInput:
         }
 
         msg = pb.Message()
-        msg.type = pb.VDC_SEND_PUSH_PROPERTY
-        msg.vdc_send_push_property.dSUID = str(self._vdsd.dsuid)
+        msg.type = pb.VDC_SEND_PUSH_NOTIFICATION
+        msg.vdc_send_push_notification.dSUID = str(self._vdsd.dsuid)
         for elem in dict_to_elements(push_tree):
-            msg.vdc_send_push_property.properties.append(elem)
+            msg.vdc_send_push_notification.changedproperties.append(elem)
 
         try:
             await session.send_notification(msg)

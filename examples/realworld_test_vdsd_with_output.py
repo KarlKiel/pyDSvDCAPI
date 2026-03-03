@@ -199,7 +199,7 @@ class MockOutputChanger:
     Cycles through brightness, hue, and colour temperature values to
     simulate a device whose local state changes over time.  Because
     ``push_changes=True`` on the output, every ``update_value()`` call
-    triggers a ``VDC_SEND_PUSH_PROPERTY`` notification to the vdSM.
+    triggers a ``VDC_SEND_PUSH_NOTIFICATION`` notification to the vdSM.
     """
 
     def __init__(self, output: Output, interval: float = 5.0) -> None:

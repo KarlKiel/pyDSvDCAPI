@@ -182,6 +182,46 @@ class TestHello:
         # Session should reflect the second hello.
         assert session.vdsm_dsuid == new_dsuid
 
+    @pytest.mark.asyncio
+    async def test_on_hello_callback_is_invoked(self):
+        """The on_hello callback should fire after a successful hello."""
+        vdsm, vdc = _make_pair()
+        called = asyncio.Event()
+
+        async def hello_cb(sess):
+            called.set()
+
+        session = VdcSession(vdc, HOST_DSUID, on_hello=hello_cb)
+
+        await vdsm.send(_hello_msg())
+        vdsm._writer.close()
+
+        task = asyncio.create_task(session.run())
+
+        # The callback is scheduled via create_task, give it a moment.
+        await asyncio.wait_for(called.wait(), timeout=2.0)
+        assert called.is_set()
+
+        await task
+
+    @pytest.mark.asyncio
+    async def test_on_hello_callback_not_called_on_incompatible_api(self):
+        """on_hello should NOT be called when hello is rejected."""
+        vdsm, vdc = _make_pair()
+        called = False
+
+        async def hello_cb(sess):
+            nonlocal called
+            called = True
+
+        session = VdcSession(vdc, HOST_DSUID, on_hello=hello_cb)
+
+        await vdsm.send(_hello_msg(api_version=1))
+        vdsm._writer.close()
+
+        await session.run()
+        assert not called
+
 
 # ---------------------------------------------------------------------------
 # Ping / Pong
@@ -713,14 +753,14 @@ class TestSendNotification:
         await vdsm.receive()
 
         push = pb.Message()
-        push.type = pb.VDC_SEND_PUSH_PROPERTY
-        push.vdc_send_push_property.dSUID = HOST_DSUID
+        push.type = pb.VDC_SEND_PUSH_NOTIFICATION
+        push.vdc_send_push_notification.dSUID = HOST_DSUID
 
         await session.send_notification(push)
 
         received = await vdsm.receive()
         assert received is not None
-        assert received.type == pb.VDC_SEND_PUSH_PROPERTY
+        assert received.type == pb.VDC_SEND_PUSH_NOTIFICATION
         assert received.message_id == 0
 
         vdsm._writer.close()
@@ -732,7 +772,7 @@ class TestSendNotification:
         session = VdcSession(vdc, HOST_DSUID)
 
         msg = pb.Message()
-        msg.type = pb.VDC_SEND_PUSH_PROPERTY
+        msg.type = pb.VDC_SEND_PUSH_NOTIFICATION
         with pytest.raises(ConnectionError, match="AWAITING_HELLO"):
             await session.send_notification(msg)
 

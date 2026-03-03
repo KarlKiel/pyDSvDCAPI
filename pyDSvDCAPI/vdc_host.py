@@ -46,6 +46,7 @@ from pyDSvDCAPI.persistence import PropertyStore
 from pyDSvDCAPI.property_handling import (
     build_get_property_response,
     elements_to_dict,
+    expand_setproperty_wildcards,
 )
 from pyDSvDCAPI.session import MessageCallback, SessionState, VdcSession
 from pyDSvDCAPI.vdc import Vdc, VdcCapabilities
@@ -814,11 +815,28 @@ class VdcHost:
             await self.announce()
 
     async def stop(self) -> None:
-        """Stop the TCP server, close the active session, and unannounce."""
+        """Stop the TCP server, close the active session, and unannounce.
+
+        The shutdown sequence is ordered to minimise spurious reconnect
+        attempts from the vdSM:
+
+        1. **Flush** any pending auto-save so property changes are not
+           lost.
+        2. **Unannounce** the DNS-SD / Avahi service so the vdSM sees the
+           service disappear *before* the TCP connection drops.
+        3. **Close** the active session (TCP connection).
+        4. **Stop** the TCP server.
+        """
         # Flush any pending auto-save so no property changes are lost.
         self.flush()
 
-        # Close the active session first.
+        # Unannounce the DNS-SD service *before* dropping the TCP
+        # connection.  This gives the vdSM's Avahi watcher a chance to
+        # notice the service is gone so it does not immediately attempt
+        # to reconnect to a dead port.
+        await self.unannounce()
+
+        # Close the active session.
         await self._close_session()
 
         # Shut down the TCP server.
@@ -827,8 +845,6 @@ class VdcHost:
             await self._server.wait_closed()
             self._server = None
             logger.info("TCP server stopped")
-
-        await self.unannounce()
 
     @property
     def is_serving(self) -> bool:
@@ -861,6 +877,7 @@ class VdcHost:
             connection=conn,
             host_dsuid=str(self._dsuid),
             on_message=self._dispatch_message,
+            on_hello=self._on_session_ready,
         )
         self._session = session
 
@@ -892,6 +909,39 @@ class VdcHost:
             await self._session.close()
             self._session = None
             self._session_task = None
+
+    async def _on_session_ready(self, session: VdcSession) -> None:
+        """Auto-announce all registered vDCs and devices on *session*.
+
+        Called by the session's ``on_hello`` hook after the hello
+        handshake completes.  This ensures that whenever a vdSM
+        (re-)connects, every vDC and device is properly announced on
+        the new session — without requiring the caller to re-drive
+        the announcement manually.
+        """
+        logger.info(
+            "Session ready — auto-announcing %d vDC(s)",
+            len(self._vdcs),
+        )
+        for vdc in self._vdcs.values():
+            try:
+                success = await vdc.announce(session)
+                if not success:
+                    logger.warning(
+                        "Auto-announce of vDC '%s' was rejected",
+                        vdc.name,
+                    )
+                    continue
+                announced = await vdc.announce_devices(session)
+                logger.info(
+                    "Auto-announced vDC '%s' with %d device(s)",
+                    vdc.name,
+                    announced,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Error during auto-announce of vDC '%s'", vdc.name
+                )
 
     # ---- property access (internal message handling) -----------------
 
@@ -942,6 +992,9 @@ class VdcHost:
         if msg_type == pb.VDSM_NOTIFICATION_SET_CONTROL_VALUE:
             await self._handle_set_control_value(msg)
             return None
+
+        if msg_type == pb.VDSM_REQUEST_GENERIC_REQUEST:
+            return await self._handle_generic_request(session, msg)
 
         # Delegate to the user callback.
         if self._on_message is not None:
@@ -997,7 +1050,10 @@ class VdcHost:
             len(msg.vdsm_request_get_property.query),
             query_names,
         )
-        return build_get_property_response(msg, props)
+
+        resp = build_get_property_response(msg, props)
+
+        return resp
 
     def _handle_set_property(self, msg: pb.Message) -> pb.Message:
         """Handle a ``VDSM_REQUEST_SET_PROPERTY``."""
@@ -1061,7 +1117,13 @@ class VdcHost:
     def _apply_vdsd_set_property(
         self, vdsd: Any, incoming: Dict[str, Any]
     ) -> None:
-        """Apply writable properties to a vdSD."""
+        """Apply writable properties to a vdSD.
+
+        Supports wildcard expansion per §7.1.2: if a container property
+        (e.g. ``buttonInputSettings``, ``scenes``) contains an
+        empty-name entry (``""`` key from the protobuf wildcard), the
+        value is applied to all existing items at that level.
+        """
         if "name" in incoming:
             vdsd.name = incoming["name"]
             logger.info(
@@ -1076,6 +1138,9 @@ class VdcHost:
         if "buttonInputSettings" in incoming:
             btn_settings = incoming["buttonInputSettings"]
             if isinstance(btn_settings, dict):
+                btn_settings = expand_setproperty_wildcards(
+                    btn_settings, vdsd._button_inputs.keys(),
+                )
                 for idx_str, settings in btn_settings.items():
                     if isinstance(settings, dict):
                         idx = int(idx_str)
@@ -1091,6 +1156,9 @@ class VdcHost:
         if "binaryInputSettings" in incoming:
             bi_settings = incoming["binaryInputSettings"]
             if isinstance(bi_settings, dict):
+                bi_settings = expand_setproperty_wildcards(
+                    bi_settings, vdsd._binary_inputs.keys(),
+                )
                 for idx_str, settings in bi_settings.items():
                     if isinstance(settings, dict):
                         idx = int(idx_str)
@@ -1106,6 +1174,9 @@ class VdcHost:
         if "sensorSettings" in incoming:
             si_settings = incoming["sensorSettings"]
             if isinstance(si_settings, dict):
+                si_settings = expand_setproperty_wildcards(
+                    si_settings, vdsd._sensor_inputs.keys(),
+                )
                 for idx_str, settings in si_settings.items():
                     if isinstance(settings, dict):
                         idx = int(idx_str)
@@ -1139,17 +1210,126 @@ class VdcHost:
                         "vdSD '%s' outputState updated",
                         vdsd.dsuid,
                     )
+        # Custom actions (§4.5.3) — user-writable.
+        if "customActions" in incoming:
+            ca_data = incoming["customActions"]
+            if isinstance(ca_data, dict):
+                ca_data = expand_setproperty_wildcards(
+                    ca_data, vdsd._custom_actions.keys(),
+                )
+                for idx_str, settings in ca_data.items():
+                    if isinstance(settings, dict):
+                        idx = int(idx_str)
+                        cust = vdsd.get_custom_action(idx)
+                        if cust is not None:
+                            cust.apply_settings(settings)
+                            logger.info(
+                                "vdSD '%s' customActions[%d] updated",
+                                vdsd.dsuid, idx,
+                            )
         # Scene settings (§4.1.4 / §4.10).
         if "scenes" in incoming:
             scene_data = incoming["scenes"]
             if isinstance(scene_data, dict):
                 output = getattr(vdsd, "output", None)
                 if output is not None:
+                    # Expand wildcards to all known scene numbers.
+                    scene_data = expand_setproperty_wildcards(
+                        scene_data, output.scene_numbers,
+                    )
                     output.apply_scenes(scene_data)
                     logger.info(
                         "vdSD '%s' scenes updated",
                         vdsd.dsuid,
                     )
+
+    # ---- GenericRequest handler (§7.3.10+) -------------------------
+
+    async def _handle_generic_request(
+        self, session: "VdcSession", msg: pb.Message
+    ) -> pb.Message:
+        """Handle ``VDSM_REQUEST_GENERIC_REQUEST`` messages.
+
+        Currently supports:
+
+        * ``invokeDeviceAction`` (§7.3.10) — invoke an action on a
+          target vdSD.
+
+        All other method names are delegated to the user-supplied
+        ``on_message`` callback. If no callback handles them, an
+        ``ERR_NOT_FOUND`` response is returned.
+        """
+        req = msg.vdsm_request_generic_request
+        method = req.methodname
+        dsuid_str = req.dSUID
+
+        # Parse params PropertyElements into a flat dict.
+        params_dict: Dict[str, Any] = {}
+        for elem in req.params:
+            name = elem.name
+            if elem.HasField("value"):
+                pv = elem.value
+                if pv.HasField("v_string"):
+                    params_dict[name] = pv.v_string
+                elif pv.HasField("v_double"):
+                    params_dict[name] = pv.v_double
+                elif pv.HasField("v_int64"):
+                    params_dict[name] = pv.v_int64
+                elif pv.HasField("v_uint64"):
+                    params_dict[name] = pv.v_uint64
+                elif pv.HasField("v_bool"):
+                    params_dict[name] = pv.v_bool
+                else:
+                    params_dict[name] = None
+            elif elem.elements:
+                # Nested params — convert to dict via elements_to_dict.
+                params_dict[name] = elements_to_dict(elem.elements)
+
+        resp = pb.Message()
+        resp.type = pb.GENERIC_RESPONSE
+        resp.message_id = msg.message_id
+
+        if method == "invokeDeviceAction":
+            action_id = params_dict.get("id", "")
+            # Remove 'id' from the params passed to the callback.
+            action_params = {
+                k: v for k, v in params_dict.items() if k != "id"
+            }
+            vdsd = self._find_vdsd_by_dsuid(dsuid_str)
+            if vdsd is None:
+                logger.warning(
+                    "invokeDeviceAction: vdSD %s not found",
+                    dsuid_str,
+                )
+                resp.generic_response.code = pb.ERR_NOT_FOUND
+                resp.generic_response.description = (
+                    f"Device {dsuid_str} not found"
+                )
+                return resp
+
+            try:
+                await vdsd.invoke_action(action_id, action_params)
+                resp.generic_response.code = pb.ERR_OK
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "invokeDeviceAction '%s' on vdSD %s failed",
+                    action_id, dsuid_str,
+                )
+                resp.generic_response.code = pb.ERR_NOT_IMPLEMENTED
+                resp.generic_response.description = str(exc)
+            return resp
+
+        # Unknown generic request — delegate to user callback.
+        if self._on_message is not None:
+            result = await self._on_message(session, msg)
+            if result is not None:
+                return result
+
+        resp.generic_response.code = pb.ERR_NOT_FOUND
+        resp.generic_response.description = (
+            f"Unknown generic request method: {method}"
+        )
+        return resp
 
     # ---- setOutputChannelValue notification handler ------------------
 

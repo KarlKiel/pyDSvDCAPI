@@ -129,8 +129,8 @@ class ColorGroup(IntEnum):
     BLUE_RECIRCULATION = 12   # Recirculation / Fan coil units
     BLUE_TEMPERATURE_CONTROL = 48  # Single room temperature control
     BLUE_APARTMENT_VENTILATION = 64  # Apartment ventilation system
-    WHITE = 255      # Single device (no fixed group ID in spec)
-
+    # WHITE = 255      # Single device (no fixed group ID in spec)
+    WHITE = 0     # "BROADCAST"Used in some contexts to indicate no group / default group
 
 # ---------------------------------------------------------------------------
 #  Scene numbers  (ds-basics Appendix B)

@@ -577,6 +577,60 @@ class Vdsd:
         """Remove a model feature flag (no-op if absent)."""
         self._model_features.discard(feature)
 
+    def derive_model_features(self) -> None:
+        """Derive and add model-feature flags from the configured components.
+
+        Applies the following rules, adding to any already-set features
+        (duplicates are prevented automatically):
+
+        * Any output present → ``"dontCare"``
+        * Binary input with ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
+        * Binary input with ``sensorFunction`` in {13, 14, 15} → ``"window"``
+        * Any sensor input present → ``"sensor"``
+        * Sensor input with ``sensorType`` 1 → ``"temperature"``
+        * Sensor input with ``sensorType`` 2 → ``"humidity"``
+        * Sensor input with ``sensorType`` 14 → ``"energy"``
+        * Output with ``activeGroup`` 1 → ``"light"``
+        * Output with ``function`` in {1, 3, 4} → ``"dimmable"``
+        * Output with ``activeGroup`` 2 **and** ``function`` 2 → ``"shade"``
+
+        This method is automatically called at the start of
+        :meth:`announce` so that all components registered before
+        announcement are taken into account.  It may also be called
+        manually to preview or refresh the flags after adding or
+        removing components.
+        """
+        if self._output is not None:
+            self._model_features.add("dontCare")
+
+        for bi in self._binary_inputs.values():
+            sf = int(bi.sensor_function)
+            if sf in {1, 3, 5, 6}:
+                self._model_features.add("presence")
+            if sf in {13, 14, 15}:
+                self._model_features.add("window")
+
+        if self._sensor_inputs:
+            self._model_features.add("sensor")
+            for si in self._sensor_inputs.values():
+                st = int(si.sensor_type)
+                if st == 1:
+                    self._model_features.add("temperature")
+                elif st == 2:
+                    self._model_features.add("humidity")
+                elif st == 14:
+                    self._model_features.add("energy")
+
+        if self._output is not None:
+            ag = self._output.active_group
+            fn = int(self._output.function)
+            if ag == 1:
+                self._model_features.add("light")
+            if fn in {1, 3, 4}:
+                self._model_features.add("dimmable")
+            if ag == 2 and fn == 2:
+                self._model_features.add("shade")
+
     # ---- binary input management -------------------------------------
 
     @property
@@ -1743,6 +1797,7 @@ class Vdsd:
         bool
             ``True`` if the vdSM accepted the announcement.
         """
+        self.derive_model_features()
         vdc = self._device.vdc
         msg = pb.Message()
         msg.type = pb.VDC_SEND_ANNOUNCE_DEVICE

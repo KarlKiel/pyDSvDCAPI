@@ -9,16 +9,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.button_input import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.button_input import (
     BUTTON_TYPE_ELEMENTS,
     ButtonInput,
     ClickDetector,
     create_button_group,
     get_required_elements,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import (
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import (
     ActionMode,
     ButtonClickType,
     ButtonElementID,
@@ -28,11 +28,11 @@ from pyDSvDCAPI.enums import (
     ColorGroup,
     InputError,
 )
-from pyDSvDCAPI.property_handling import elements_to_dict
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------
@@ -1655,32 +1655,32 @@ class TestExports:
     """Verify all new exports are importable."""
 
     def test_button_input_importable(self):
-        from pyDSvDCAPI import ButtonInput  # noqa: F811
+        from pydsvdcapi import ButtonInput  # noqa: F811
 
         assert ButtonInput is not None
 
     def test_click_detector_importable(self):
-        from pyDSvDCAPI import ClickDetector  # noqa: F811
+        from pydsvdcapi import ClickDetector  # noqa: F811
 
         assert ClickDetector is not None
 
     def test_action_mode_importable(self):
-        from pyDSvDCAPI import ActionMode  # noqa: F811
+        from pydsvdcapi import ActionMode  # noqa: F811
 
         assert ActionMode is not None
 
     def test_create_button_group_importable(self):
-        from pyDSvDCAPI import create_button_group  # noqa: F811
+        from pydsvdcapi import create_button_group  # noqa: F811
 
         assert create_button_group is not None
 
     def test_get_required_elements_importable(self):
-        from pyDSvDCAPI import get_required_elements  # noqa: F811
+        from pydsvdcapi import get_required_elements  # noqa: F811
 
         assert get_required_elements is not None
 
     def test_button_type_elements_importable(self):
-        from pyDSvDCAPI import BUTTON_TYPE_ELEMENTS  # noqa: F811
+        from pydsvdcapi import BUTTON_TYPE_ELEMENTS  # noqa: F811
 
         assert BUTTON_TYPE_ELEMENTS is not None
 

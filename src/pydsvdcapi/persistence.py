@@ -18,7 +18,7 @@ Load strategy (with fallback):
 
 Usage example::
 
-    from pyDSvDCAPI.persistence import PropertyStore
+    from pydsvdcapi.persistence import PropertyStore
 
     store = PropertyStore("/var/lib/myvdc/state.yaml")
 

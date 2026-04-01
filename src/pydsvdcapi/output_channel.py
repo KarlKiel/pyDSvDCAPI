@@ -1,11 +1,11 @@
 """Output channel component for vdSD devices.
 
 An :class:`OutputChannel` represents one controllable dimension of a
-device's single :class:`~pyDSvDCAPI.output.Output` — for example
+device's single :class:`~pydsvdcapi.output.Output` — for example
 *brightness*, *hue*, *shade position* or *heating power*.
 
 Each output can own **one or more** channels.  The set of channels
-depends on the output's :pyattr:`~pyDSvDCAPI.output.Output.function`:
+depends on the output's :pyattr:`~pydsvdcapi.output.Output.function`:
 
 ======================  ===================================================
 Output function          Required channels
@@ -19,7 +19,7 @@ BIPOLAR (5)              device-dependent — add manually
 INTERNALLY_CTRL (6)      device-dependent — add manually
 ======================  ===================================================
 
-For functions 0/1/3/4 the :class:`~pyDSvDCAPI.output.Output` auto-
+For functions 0/1/3/4 the :class:`~pydsvdcapi.output.Output` auto-
 creates the required channels.  For 2/5/6 the integrator must add them
 via :meth:`Output.add_channel`.
 
@@ -88,11 +88,11 @@ from typing import (
     Union,
 )
 
-from pyDSvDCAPI.conversion import apply_converter, compile_converter
-from pyDSvDCAPI.enums import OutputChannelType
+from pydsvdcapi.conversion import apply_converter, compile_converter
+from pydsvdcapi.enums import OutputChannelType
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.output import Output
+    from pydsvdcapi.output import Output
 
 logger = logging.getLogger(__name__)
 
@@ -275,7 +275,7 @@ class OutputChannel:
     Parameters
     ----------
     output:
-        The owning :class:`~pyDSvDCAPI.output.Output`.
+        The owning :class:`~pydsvdcapi.output.Output`.
     channel_type:
         Standard channel type (``OutputChannelType`` or int).
     ds_index:

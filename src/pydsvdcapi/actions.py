@@ -46,7 +46,7 @@ Persistence
 
 Usage::
 
-    from pyDSvDCAPI.actions import (
+    from pydsvdcapi.actions import (
         ActionParameter, DeviceActionDescription,
         StandardAction, CustomAction, DynamicAction,
     )
@@ -97,7 +97,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.vdsd import Vdsd
+    from pydsvdcapi.vdsd import Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -347,7 +347,7 @@ class DeviceActionDescription:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd` instance.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd` instance.
     ds_index:
         Numeric index of this action description within the device
         (position in ``deviceActionDescriptions``).
@@ -501,7 +501,7 @@ class StandardAction:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd` instance.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd` instance.
     ds_index:
         Numeric index of this action within the device
         (position in ``standardActions``).
@@ -643,7 +643,7 @@ class CustomAction:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd` instance.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd` instance.
     ds_index:
         Numeric index within the device (position in ``customActions``).
     name:
@@ -821,7 +821,7 @@ class DynamicAction:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd` instance.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd` instance.
     ds_index:
         Numeric index within the device
         (position in ``dynamicDeviceActions``).

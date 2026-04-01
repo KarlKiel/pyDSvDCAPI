@@ -72,8 +72,8 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.dsuid import DsUid
-    from pyDSvDCAPI.vdsd import Device
+    from pydsvdcapi.dsuid import DsUid
+    from pydsvdcapi.vdsd import Device
 
 logger = logging.getLogger(__name__)
 
@@ -253,7 +253,7 @@ class DeviceTemplate:
         Parameters
         ----------
         vdc:
-            The :class:`~pyDSvDCAPI.vdc.Vdc` that will own the device.
+            The :class:`~pydsvdcapi.vdc.Vdc` that will own the device.
         dsuid:
             The base dSUID for the new device.  A random dSUID is
             generated if omitted.
@@ -278,8 +278,8 @@ class DeviceTemplate:
             ]
             raise TemplateNotConfiguredError(missing)
 
-        from pyDSvDCAPI.dsuid import DsUid
-        from pyDSvDCAPI.vdsd import Device
+        from pydsvdcapi.dsuid import DsUid
+        from pydsvdcapi.vdsd import Device
 
         if dsuid is None:
             dsuid = DsUid.random()

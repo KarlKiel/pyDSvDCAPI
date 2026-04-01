@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 import yaml
 
-from pyDSvDCAPI.dsuid import DsUid
-from pyDSvDCAPI.vdc_host import VdcHost
+from pydsvdcapi.dsuid import DsUid
+from pydsvdcapi.vdc_host import VdcHost
 
 
 TEST_MAC = "AA:BB:CC:DD:EE:FF"

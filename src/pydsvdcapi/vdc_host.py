@@ -9,7 +9,7 @@ incoming vdSM connections.
 Usage example::
 
     import asyncio
-    from pyDSvDCAPI import VdcHost
+    from pydsvdcapi import VdcHost
 
     host = VdcHost(
         model="My Smart Gateway",
@@ -39,17 +39,17 @@ from typing import Any, Awaitable, Callable, ClassVar, Dict, Optional, Union
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import VdcConnection
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.persistence import PropertyStore
-from pyDSvDCAPI.property_handling import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import VdcConnection
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.persistence import PropertyStore
+from pydsvdcapi.property_handling import (
     build_get_property_response,
     elements_to_dict,
     expand_setproperty_wildcards,
 )
-from pyDSvDCAPI.session import MessageCallback, SessionState, VdcSession
-from pyDSvDCAPI.vdc import Vdc, VdcCapabilities
+from pydsvdcapi.session import MessageCallback, SessionState, VdcSession
+from pydsvdcapi.vdc import Vdc, VdcCapabilities
 
 #: Callback invoked when the vdSM requests device removal (§6.3).
 #: Receives the dSUID string of the device to remove.
@@ -174,7 +174,7 @@ class VdcHost:
         ``"vDC host on <hostname>"``.
     model:
         Human-readable model description.  Defaults to
-        ``"pyDSvDCAPI vDC host"``.
+        ``"pydsvdcapi vDC host"``.
     model_version:
         Model / firmware version string.
     model_uid:
@@ -239,7 +239,7 @@ class VdcHost:
         port: int = DEFAULT_VDC_PORT,
         dsuid: Optional[DsUid] = None,
         name: Optional[str] = None,
-        model: str = "pyDSvDCAPI vDC host",
+        model: str = "pydsvdcapi vDC host",
         model_version: Optional[str] = None,
         model_uid: Optional[str] = None,
         hardware_version: Optional[str] = None,
@@ -283,7 +283,7 @@ class VdcHost:
             or host_state.get("name")
             or f"vDC host on {_get_hostname()}"
         )
-        self.model: str = model if model != "pyDSvDCAPI vDC host" else host_state.get("model", model)
+        self.model: str = model if model != "pydsvdcapi vDC host" else host_state.get("model", model)
         self.model_version: Optional[str] = (
             model_version or host_state.get("modelVersion")
         )
@@ -825,7 +825,7 @@ class VdcHost:
         on_message:
             Async callback for messages that are not handled internally
             (i.e. not ``hello``, ``ping``, or ``bye``).  See
-            :data:`~pyDSvDCAPI.session.MessageCallback`.
+            :data:`~pydsvdcapi.session.MessageCallback`.
         on_remove:
             Optional async callback invoked when the vdSM requests
             device removal (§6.3).  Receives the dSUID string.  Return
@@ -1625,7 +1625,7 @@ class VdcHost:
         """Handle ``VDSM_NOTIFICATION_DIM_CHANNEL`` (§7.3.5).
 
         Resolves the target output channel and delegates to the
-        output's :meth:`~pyDSvDCAPI.output.Output.dim_channel`
+        output's :meth:`~pydsvdcapi.output.Output.dim_channel`
         method which invokes the ``on_dim_channel`` callback.
         """
         notif = msg.vdsm_send_dim_channel
@@ -1656,7 +1656,7 @@ class VdcHost:
                         channel_obj = ch
                         break
             if channel_obj is None and notif.channel:
-                from pyDSvDCAPI.enums import OutputChannelType
+                from pydsvdcapi.enums import OutputChannelType
                 try:
                     ct = OutputChannelType(int(notif.channel))
                     channel_obj = output.get_channel_by_type(ct)
@@ -1694,7 +1694,7 @@ class VdcHost:
         """Handle ``VDSM_NOTIFICATION_IDENTIFY`` (§7.3.7).
 
         Resolves each target vdSD and calls its
-        :meth:`~pyDSvDCAPI.vdsd.Vdsd.identify` method which invokes
+        :meth:`~pydsvdcapi.vdsd.Vdsd.identify` method which invokes
         the ``on_identify`` callback.
         """
         notif = msg.vdsm_send_identify
@@ -1808,7 +1808,7 @@ class VdcHost:
                         break
             if channel_obj is None and notif.channel:
                 # Look up by channel type (int).
-                from pyDSvDCAPI.enums import OutputChannelType
+                from pydsvdcapi.enums import OutputChannelType
                 try:
                     ct = OutputChannelType(int(notif.channel))
                     channel_obj = output.get_channel_by_type(ct)

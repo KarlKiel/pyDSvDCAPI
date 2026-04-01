@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real-world integration demo for pyDSvDCAPI.
+"""Real-world integration demo for pydsvdcapi.
 
 This script demonstrates a full lifecycle with a real digitalSTROM
 system (dSS / vdSM) on the local network:
@@ -34,23 +34,23 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from pyDSvDCAPI import VdcHost, SessionState  # noqa: E402
-from pyDSvDCAPI import genericVDC_pb2 as pb  # noqa: E402
+from pydsvdcapi import VdcHost, SessionState  # noqa: E402
+from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 #: Persistence file — lives in /tmp so it's cleaned up automatically.
-STATE_FILE = Path("/tmp/pyDSvDCAPI_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_demo_state.yaml")
 
 #: TCP port.  Using the DS-standard 8444.
 PORT = 8444
 
 #: Fixed model strings.
-MODEL_NAME = "pyDSvDCAPI Demo Gateway"
-HOST_NAME = "pyDSvDCAPI Demo Host"
-VENDOR = "pyDSvDCAPI"
+MODEL_NAME = "pydsvdcapi Demo Gateway"
+HOST_NAME = "pydsvdcapi Demo Host"
+VENDOR = "pydsvdcapi"
 
 #: Number of ping/pong exchanges to wait for before shutdown.
 PINGS_BEFORE_SHUTDOWN = 3

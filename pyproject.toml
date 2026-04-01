@@ -2,10 +2,14 @@
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+# ---------------------------------------------------------------------------
+# Project metadata
+# ---------------------------------------------------------------------------
+
 [project]
-name = "pyDSvDCAPI"
+name = "pydsvdcapi"
 version = "0.1.0"
-description = "Python library for the DSvDC API"
+description = "Python library for the digitalSTROM vDC API"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.9"
@@ -15,14 +19,109 @@ dependencies = [
     "zeroconf>=0.80.0",
 ]
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Topic :: Home Automation",
+    "Topic :: Software Development :: Libraries :: Python Modules",
     "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
     "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
 ]
 
 [project.urls]
 Homepage = "https://github.com/KarlKiel/pyDSvDCAPI"
 Issues = "https://github.com/KarlKiel/pyDSvDCAPI/issues"
+Changelog = "https://github.com/KarlKiel/pyDSvDCAPI/blob/main/CHANGELOG.md"
+
+# ---------------------------------------------------------------------------
+# Optional / development dependencies
+# ---------------------------------------------------------------------------
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-timeout>=2.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+    "coverage[toml]>=7.0",
+]
+
+# ---------------------------------------------------------------------------
+# Package discovery (src layout)
+# ---------------------------------------------------------------------------
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+pydsvdcapi = ["py.typed", "*.pyi"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# ruff — linting & formatting
+# ---------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # line too long — handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["pydsvdcapi"]
+
+# ---------------------------------------------------------------------------
+# mypy — static type checking
+# ---------------------------------------------------------------------------
+
+[tool.mypy]
+python_version = "3.9"
+warn_unused_configs = true
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+
+[tool.coverage.run]
+source = ["pydsvdcapi"]
+branch = true
+omit = ["src/pydsvdcapi/genericVDC_pb2.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@overload",
+]

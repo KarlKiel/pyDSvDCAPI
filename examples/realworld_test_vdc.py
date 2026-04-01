@@ -43,33 +43,33 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from pyDSvDCAPI import (  # noqa: E402
+from pydsvdcapi import (  # noqa: E402
     Vdc,
     VdcCapabilities,
     VdcHost,
     SessionState,
 )
-from pyDSvDCAPI import genericVDC_pb2 as pb  # noqa: E402
+from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 #: Persistence file.
-STATE_FILE = Path("/tmp/pyDSvDCAPI_vdc_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_vdc_demo_state.yaml")
 
 #: TCP port (digitalSTROM standard).
 PORT = 8444
 
 #: Host identity.
-MODEL_NAME = "pyDSvDCAPI Demo Gateway"
-HOST_NAME = "pyDSvDCAPI vDC Demo Host"
-VENDOR = "pyDSvDCAPI"
+MODEL_NAME = "pydsvdcapi Demo Gateway"
+HOST_NAME = "pydsvdcapi vDC Demo Host"
+VENDOR = "pydsvdcapi"
 
 #: vDC identity.
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-light"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-light"
 VDC_NAME = "Demo Light vDC"
-VDC_MODEL = "pyDSvDCAPI Demo Light Controller v1"
+VDC_MODEL = "pydsvdcapi Demo Light Controller v1"
 
 #: Maximum seconds to wait for a vdSM connection.
 CONNECT_TIMEOUT = 120

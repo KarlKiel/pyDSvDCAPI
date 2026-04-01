@@ -23,26 +23,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import (
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import (
     ColorGroup,
     OutputChannelType,
     OutputFunction,
     OutputMode,
     OutputUsage,
 )
-from pyDSvDCAPI.output import FUNCTION_CHANNELS, Output
-from pyDSvDCAPI.output_channel import (
+from pydsvdcapi.output import FUNCTION_CHANNELS, Output
+from pydsvdcapi.output_channel import (
     CHANNEL_SPECS,
     ChannelSpec,
     OutputChannel,
     get_channel_spec,
 )
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
-import pyDSvDCAPI.genericVDC_pb2 as pb
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
+import pydsvdcapi.genericVDC_pb2 as pb
 
 
 # ---------------------------------------------------------------------------
@@ -1370,20 +1370,20 @@ class TestExports:
     """Verify that key symbols are importable from the package."""
 
     def test_output_channel_exported(self):
-        from pyDSvDCAPI import OutputChannel
+        from pydsvdcapi import OutputChannel
         assert OutputChannel is not None
 
     def test_channel_specs_exported(self):
-        from pyDSvDCAPI import CHANNEL_SPECS, ChannelSpec
+        from pydsvdcapi import CHANNEL_SPECS, ChannelSpec
         assert len(CHANNEL_SPECS) > 0
         assert isinstance(
             list(CHANNEL_SPECS.values())[0], ChannelSpec
         )
 
     def test_get_channel_spec_exported(self):
-        from pyDSvDCAPI import get_channel_spec
+        from pydsvdcapi import get_channel_spec
         assert callable(get_channel_spec)
 
     def test_function_channels_exported(self):
-        from pyDSvDCAPI import FUNCTION_CHANNELS
+        from pydsvdcapi import FUNCTION_CHANNELS
         assert OutputFunction.DIMMER in FUNCTION_CHANNELS

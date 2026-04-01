@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from pyDSvDCAPI.persistence import PropertyStore
+from pydsvdcapi.persistence import PropertyStore
 
 
 @pytest.fixture

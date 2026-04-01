@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import (
     ColorGroup,
     HeatingSystemCapability,
     HeatingSystemType,
@@ -18,12 +18,12 @@ from pyDSvDCAPI.enums import (
     OutputMode,
     OutputUsage,
 )
-from pyDSvDCAPI.output import Output
-from pyDSvDCAPI.output_channel import OutputChannel
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.output import Output
+from pydsvdcapi.output_channel import OutputChannel
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------
@@ -1284,11 +1284,11 @@ class TestOutputExport:
     """Verify Output is accessible from the top-level package."""
 
     def test_import_output(self):
-        from pyDSvDCAPI import Output
+        from pydsvdcapi import Output
         assert Output is not None
 
     def test_output_is_same_class(self):
-        from pyDSvDCAPI import Output as PkgOutput
+        from pydsvdcapi import Output as PkgOutput
         assert PkgOutput is Output
 
 
@@ -1435,8 +1435,8 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
-        from pyDSvDCAPI.output import _NON_VALUE_SCENES
+        from pydsvdcapi.enums import SceneNumber
+        from pydsvdcapi.output import _NON_VALUE_SCENES
 
         # Each SceneNumber that is NOT a non-value scene should exist.
         for sn in SceneNumber:
@@ -1463,7 +1463,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         entry = out.get_scene(int(SceneNumber.PRESET_0))
         assert entry is not None
@@ -1479,7 +1479,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         entry = out.get_scene(int(SceneNumber.PRESET_1))
         assert entry is not None
@@ -1494,7 +1494,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         # Preset 2 (scene 17) is not an off or on scene.
         entry = out.get_scene(int(SceneNumber.PRESET_2))
@@ -1507,7 +1507,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         # PRESET_1 = on → brightness = 100.
         ch = out.get_channel(0)
@@ -1522,7 +1522,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -1538,7 +1538,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -1559,7 +1559,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -1587,7 +1587,7 @@ class TestOutputScenes:
         )
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         # Set initial values.
         brightness = out.get_channel(0)
@@ -1629,7 +1629,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -1647,7 +1647,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -1712,7 +1712,7 @@ class TestOutputScenes:
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import OutputChannelType
+        from pydsvdcapi.enums import OutputChannelType
 
         # API format: keyed by scene number (str), channels by type (str).
         scene_data = {
@@ -1745,7 +1745,7 @@ class TestOutputScenes:
         )
         vdsd.set_output(out)
 
-        from pyDSvDCAPI.enums import OutputChannelType
+        from pydsvdcapi.enums import OutputChannelType
 
         # POSITIONAL has no auto-created channels.
         assert len(out.channels) == 0
@@ -1873,7 +1873,7 @@ class TestVdcHostSceneDispatch:
         vdc.add_device(device)
         host.add_vdc(vdc)
 
-        from pyDSvDCAPI.enums import SceneNumber
+        from pydsvdcapi.enums import SceneNumber
 
         assert out.local_priority is False
 
@@ -1925,8 +1925,8 @@ class TestVdcHostSceneDispatch:
         vdc.add_device(device)
         host.add_vdc(vdc)
 
-        from pyDSvDCAPI.enums import OutputChannelType
-        from pyDSvDCAPI.property_handling import dict_to_elements
+        from pydsvdcapi.enums import OutputChannelType
+        from pydsvdcapi.property_handling import dict_to_elements
 
         scene_data = {
             "scenes": {
@@ -2067,7 +2067,7 @@ class TestVdcHostDimChannelDispatch:
     @pytest.mark.asyncio
     async def test_dispatch_dim_by_channel_type(self):
         """dimChannel with numeric channel type resolves correctly."""
-        from pyDSvDCAPI.enums import OutputChannelType
+        from pydsvdcapi.enums import OutputChannelType
 
         host, vdc, device, vdsd = _make_stack()
         out = _make_output(vdsd, function=OutputFunction.DIMMER)

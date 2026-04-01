@@ -69,7 +69,7 @@ import sys
 import time
 from pathlib import Path
 
-from pyDSvDCAPI import (
+from pydsvdcapi import (
     ColorGroup,
     Device,
     DeviceEvent,
@@ -83,37 +83,37 @@ from pyDSvDCAPI import (
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.device_property import (
+from pydsvdcapi.device_property import (
     PROPERTY_TYPE_ENUMERATION,
     PROPERTY_TYPE_NUMERIC,
     PROPERTY_TYPE_STRING,
     DeviceProperty,
 )
-from pyDSvDCAPI.device_state import DeviceState
-from pyDSvDCAPI.property_handling import NO_VALUE
+from pydsvdcapi.device_state import DeviceState
+from pydsvdcapi.property_handling import NO_VALUE
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-STATE_FILE = Path("/tmp/pyDSvDCAPI_state_prop_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_state_prop_demo_state.yaml")
 
 PORT = 8444
-MODEL_NAME = "pyDSvDCAPI State+Prop Demo"
+MODEL_NAME = "pydsvdcapi State+Prop Demo"
 HOST_NAME = "state-prop-demo-host"
-VENDOR = "pyDSvDCAPI"
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-state-prop"
+VENDOR = "pydsvdcapi"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-state-prop"
 VDC_NAME = "State/Prop Demo vDC"
-VDC_MODEL = "pyDSvDCAPI-state-prop-vdc"
+VDC_MODEL = "pydsvdcapi-state-prop-vdc"
 
 # Device 1: Sensor Node (Cyan/Joker) — environmental monitor
 VDSD_SENSOR_NAME = "Demo Sensor Node"
-VDSD_SENSOR_MODEL = "pyDSvDCAPI-sensor-node"
+VDSD_SENSOR_MODEL = "pydsvdcapi-sensor-node"
 VDSD_SENSOR_GROUP = ColorGroup.CYAN
 
 # Device 2: Smart Plug (Yellow) — power plug
 VDSD_PLUG_NAME = "Demo Smart Plug"
-VDSD_PLUG_MODEL = "pyDSvDCAPI-smart-plug"
+VDSD_PLUG_MODEL = "pydsvdcapi-smart-plug"
 VDSD_PLUG_GROUP = ColorGroup.YELLOW
 
 #: How long to wait for the vdSM/dSS to connect (seconds).

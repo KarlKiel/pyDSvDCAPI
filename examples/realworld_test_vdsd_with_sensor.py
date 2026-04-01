@@ -64,7 +64,7 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from pyDSvDCAPI import (  # noqa: E402
+from pydsvdcapi import (  # noqa: E402
     Device,
     SensorInput,
     Vdc,
@@ -72,37 +72,37 @@ from pyDSvDCAPI import (  # noqa: E402
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace  # noqa: E402
-from pyDSvDCAPI.enums import (  # noqa: E402
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace  # noqa: E402
+from pydsvdcapi.enums import (  # noqa: E402
     ColorGroup,
     SensorType,
     SensorUsage,
 )
-from pyDSvDCAPI import genericVDC_pb2 as pb  # noqa: E402
+from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 #: Persistence file (separate from the basic demo).
-STATE_FILE = Path("/tmp/pyDSvDCAPI_sensor_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_sensor_demo_state.yaml")
 
 #: TCP port (digitalSTROM standard).
 PORT = 8444
 
 #: Host identity.
-MODEL_NAME = "pyDSvDCAPI Demo Gateway (Sensor)"
-HOST_NAME = "pyDSvDCAPI SensorInput Demo Host"
-VENDOR = "pyDSvDCAPI"
+MODEL_NAME = "pydsvdcapi Demo Gateway (Sensor)"
+HOST_NAME = "pydsvdcapi SensorInput Demo Host"
+VENDOR = "pydsvdcapi"
 
 #: vDC identity.
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-sensor"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-sensor"
 VDC_NAME = "Demo SensorInput vDC"
-VDC_MODEL = "pyDSvDCAPI Demo Sensor Controller v1"
+VDC_MODEL = "pydsvdcapi Demo Sensor Controller v1"
 
 #: vdSD identity.
 VDSD_NAME = "Demo Sensor Device"
-VDSD_MODEL = "pyDSvDCAPI Virtual Sensor v1"
+VDSD_MODEL = "pydsvdcapi Virtual Sensor v1"
 VDSD_PRIMARY_GROUP = ColorGroup.BLACK  # Joker / sensor
 
 #: Maximum seconds to wait for a vdSM connection.

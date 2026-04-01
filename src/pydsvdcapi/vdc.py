@@ -1,7 +1,7 @@
 """vDC — virtual Device Connector entity.
 
 A :class:`Vdc` represents a logical virtual Device Connector in the
-digitalSTROM system.  A vDC host (:class:`~pyDSvDCAPI.vdc_host.VdcHost`)
+digitalSTROM system.  A vDC host (:class:`~pydsvdcapi.vdc_host.VdcHost`)
 manages one or more vDCs, each of which in turn manages a set of
 virtual dS devices (vdSDs).
 
@@ -30,7 +30,7 @@ waits for a ``GENERIC_RESPONSE``.
 
 Usage example::
 
-    from pyDSvDCAPI import VdcHost, Vdc
+    from pydsvdcapi import VdcHost, Vdc
 
     host = VdcHost(name="My Gateway", state_path="state.yaml")
     vdc = Vdc(
@@ -49,13 +49,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Union
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdc_host import VdcHost
-    from pyDSvDCAPI.vdsd import Device, Vdsd
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdc_host import VdcHost
+    from pydsvdcapi.vdsd import Device, Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ class Vdc:
         implementation_id: str,
         dsuid: Optional[DsUid] = None,
         name: Optional[str] = None,
-        model: str = "pyDSvDCAPI vDC",
+        model: str = "pydsvdcapi vDC",
         model_version: Optional[str] = None,
         model_uid: Optional[str] = None,
         hardware_version: Optional[str] = None,
@@ -446,7 +446,7 @@ class Vdc:
         Parameters
         ----------
         device:
-            The :class:`~pyDSvDCAPI.vdsd.Device` to use as the source.
+            The :class:`~pydsvdcapi.vdsd.Device` to use as the source.
         template_type:
             Either ``"generic"`` or ``"model"``.  Controls the
             sub-directory (``generic_templates/`` or
@@ -477,7 +477,7 @@ class Vdc:
             )
 
         import yaml
-        from pyDSvDCAPI.device_template import (
+        from pydsvdcapi.device_template import (
             DeviceTemplate,
             build_required_callbacks,
             build_required_fields,
@@ -540,7 +540,7 @@ class Vdc:
         Returns
         -------
         DeviceTemplate
-            A :class:`~pyDSvDCAPI.device_template.DeviceTemplate`
+            A :class:`~pydsvdcapi.device_template.DeviceTemplate`
             ready to configure and instantiate.
 
         Raises
@@ -557,7 +557,7 @@ class Vdc:
             )
 
         import yaml
-        from pyDSvDCAPI.device_template import DeviceTemplate
+        from pydsvdcapi.device_template import DeviceTemplate
 
         file_path = (
             self._template_path
@@ -714,7 +714,7 @@ class Vdc:
 
             # Restore devices from persisted state.
             if "devices" in state:
-                from pyDSvDCAPI.vdsd import Device
+                from pydsvdcapi.vdsd import Device
                 for dev_state in state["devices"]:
                     base_dsuid_str = dev_state.get("baseDsUID")
                     if base_dsuid_str:

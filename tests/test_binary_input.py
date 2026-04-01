@@ -8,24 +8,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.binary_input import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.binary_input import (
     INPUT_TYPE_DETECTS_CHANGES,
     INPUT_TYPE_POLL_ONLY,
     BinaryInput,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import (
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import (
     BinaryInputType,
     BinaryInputUsage,
     ColorGroup,
     InputError,
 )
-from pyDSvDCAPI.property_handling import elements_to_dict
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------

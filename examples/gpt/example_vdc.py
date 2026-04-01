@@ -4,11 +4,11 @@ VDC host implementation and device binding logic for the real-world mock demo.
 """
 import asyncio
 import logging
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdsd import Vdsd
-from pyDSvDCAPI.dsuid import DsUid
-from pyDSvDCAPI.enums import *
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdsd import Vdsd
+from pydsvdcapi.dsuid import DsUid
+from pydsvdcapi.enums import *
 
 # For demo: import mock device API
 from examples.gpt.mock_devices import (

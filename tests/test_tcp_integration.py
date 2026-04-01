@@ -5,10 +5,10 @@ import struct
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import VdcConnection
-from pyDSvDCAPI.session import SessionState
-from pyDSvDCAPI.vdc_host import VdcHost
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import VdcConnection
+from pydsvdcapi.session import SessionState
+from pydsvdcapi.vdc_host import VdcHost
 
 
 TEST_MAC = "AA:BB:CC:DD:EE:FF"

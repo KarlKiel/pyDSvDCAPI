@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from pyDSvDCAPI.dsuid import (
+from pydsvdcapi.dsuid import (
     DSUID_BYTES,
     DsUid,
     DsUidNamespace,

@@ -8,21 +8,21 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.actions import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.actions import (
     ActionParameter,
     CustomAction,
     DeviceActionDescription,
     DynamicAction,
     StandardAction,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import ColorGroup
-from pyDSvDCAPI.property_handling import elements_to_dict
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, InvokeActionCallback, Vdsd
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, InvokeActionCallback, Vdsd
 
 
 # ---------------------------------------------------------------------------
@@ -696,7 +696,7 @@ class TestGetPropertiesActions:
 
     def test_empty_containers_when_only_states(self):
         """With only states defined, action containers should be empty."""
-        from pyDSvDCAPI.device_state import DeviceState
+        from pydsvdcapi.device_state import DeviceState
 
         _, _, _, vdsd = _make_stack()
         st = DeviceState(

@@ -38,8 +38,8 @@ Device/Vdsd objects from the persisted data.
 
 Usage example::
 
-    from pyDSvDCAPI import Vdc, Device, Vdsd
-    from pyDSvDCAPI.enums import ColorGroup
+    from pydsvdcapi import Vdc, Device, Vdsd
+    from pydsvdcapi.enums import ColorGroup
 
     vdc = Vdc(host=host, implementation_id="x-acme-light")
 
@@ -78,26 +78,26 @@ from typing import (
     Union,
 )
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid
-from pyDSvDCAPI.enums import ColorGroup
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid
+from pydsvdcapi.enums import ColorGroup
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.actions import (
+    from pydsvdcapi.actions import (
         CustomAction,
         DeviceActionDescription,
         DynamicAction,
         StandardAction,
     )
-    from pyDSvDCAPI.binary_input import BinaryInput
-    from pyDSvDCAPI.button_input import ButtonInput
-    from pyDSvDCAPI.device_event import DeviceEvent
-    from pyDSvDCAPI.device_property import DeviceProperty
-    from pyDSvDCAPI.device_state import DeviceState
-    from pyDSvDCAPI.output import Output
-    from pyDSvDCAPI.sensor_input import SensorInput
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdc import Vdc
+    from pydsvdcapi.binary_input import BinaryInput
+    from pydsvdcapi.button_input import ButtonInput
+    from pydsvdcapi.device_event import DeviceEvent
+    from pydsvdcapi.device_property import DeviceProperty
+    from pydsvdcapi.device_state import DeviceState
+    from pydsvdcapi.output import Output
+    from pydsvdcapi.sensor_input import SensorInput
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdc import Vdc
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +250,7 @@ class Vdsd:
         primary_group: ColorGroup = ColorGroup.BLACK,
         subdevice_index: int = 0,
         name: Optional[str] = None,
-        model: str = "pyDSvDCAPI vdSD",
+        model: str = "pydsvdcapi vdSD",
         model_version: Optional[str] = None,
         model_uid: Optional[str] = None,
         hardware_version: Optional[str] = None,
@@ -352,7 +352,7 @@ class Vdsd:
     @staticmethod
     def _derive_model_uid(model: str) -> str:
         """Derive a deterministic ``modelUID`` from the model name."""
-        from pyDSvDCAPI.dsuid import DsUidNamespace
+        from pydsvdcapi.dsuid import DsUidNamespace
         uid = DsUid.from_name_in_space(model, DsUidNamespace.VDC)
         return str(uid)
 
@@ -1644,7 +1644,7 @@ class Vdsd:
 
             # Restore button inputs.
             if "buttonInputs" in state:
-                from pyDSvDCAPI.button_input import ButtonInput
+                from pydsvdcapi.button_input import ButtonInput
                 for btn_state in state["buttonInputs"]:
                     idx = btn_state.get("dsIndex", 0)
                     btn = self._button_inputs.get(idx)
@@ -1658,7 +1658,7 @@ class Vdsd:
 
             # Restore binary inputs.
             if "binaryInputs" in state:
-                from pyDSvDCAPI.binary_input import BinaryInput
+                from pydsvdcapi.binary_input import BinaryInput
                 for bi_state in state["binaryInputs"]:
                     idx = bi_state.get("dsIndex", 0)
                     bi = self._binary_inputs.get(idx)
@@ -1672,7 +1672,7 @@ class Vdsd:
 
             # Restore sensor inputs.
             if "sensorInputs" in state:
-                from pyDSvDCAPI.sensor_input import SensorInput
+                from pydsvdcapi.sensor_input import SensorInput
                 for si_state in state["sensorInputs"]:
                     idx = si_state.get("dsIndex", 0)
                     si = self._sensor_inputs.get(idx)
@@ -1686,7 +1686,7 @@ class Vdsd:
 
             # Restore device events.
             if "deviceEvents" in state:
-                from pyDSvDCAPI.device_event import DeviceEvent
+                from pydsvdcapi.device_event import DeviceEvent
                 for evt_state in state["deviceEvents"]:
                     idx = evt_state.get("dsIndex", 0)
                     evt = self._device_events.get(idx)
@@ -1700,7 +1700,7 @@ class Vdsd:
 
             # Restore device states.
             if "deviceStates" in state:
-                from pyDSvDCAPI.device_state import DeviceState
+                from pydsvdcapi.device_state import DeviceState
                 for st_state in state["deviceStates"]:
                     idx = st_state.get("dsIndex", 0)
                     st = self._device_states.get(idx)
@@ -1714,7 +1714,7 @@ class Vdsd:
 
             # Restore device properties.
             if "deviceProperties" in state:
-                from pyDSvDCAPI.device_property import DeviceProperty
+                from pydsvdcapi.device_property import DeviceProperty
                 for prop_state in state["deviceProperties"]:
                     idx = prop_state.get("dsIndex", 0)
                     prop = self._device_properties.get(idx)
@@ -1728,7 +1728,7 @@ class Vdsd:
 
             # Restore action descriptions (§4.5.2).
             if "actionDescriptions" in state:
-                from pyDSvDCAPI.actions import DeviceActionDescription
+                from pydsvdcapi.actions import DeviceActionDescription
                 for desc_state in state["actionDescriptions"]:
                     idx = desc_state.get("dsIndex", 0)
                     desc = self._action_descriptions.get(idx)
@@ -1742,7 +1742,7 @@ class Vdsd:
 
             # Restore standard actions (§4.5.3).
             if "standardActions" in state:
-                from pyDSvDCAPI.actions import StandardAction
+                from pydsvdcapi.actions import StandardAction
                 for std_state in state["standardActions"]:
                     idx = std_state.get("dsIndex", 0)
                     std = self._standard_actions.get(idx)
@@ -1756,7 +1756,7 @@ class Vdsd:
 
             # Restore custom actions (§4.5.3).
             if "customActions" in state:
-                from pyDSvDCAPI.actions import CustomAction
+                from pydsvdcapi.actions import CustomAction
                 for cust_state in state["customActions"]:
                     idx = cust_state.get("dsIndex", 0)
                     cust = self._custom_actions.get(idx)
@@ -1772,7 +1772,7 @@ class Vdsd:
 
             # Restore output.
             if "output" in state:
-                from pyDSvDCAPI.output import Output
+                from pydsvdcapi.output import Output
                 out_state = state["output"]
                 if self._output is None:
                     self._output = Output(vdsd=self)
@@ -2097,7 +2097,7 @@ class Device:
         if self._required_callbacks is not None:
             missing = self._check_required_callbacks()
             if missing:
-                from pyDSvDCAPI.device_template import AnnouncementNotReadyError
+                from pydsvdcapi.device_template import AnnouncementNotReadyError
                 raise AnnouncementNotReadyError(missing)
 
         count = 0
@@ -2207,10 +2207,10 @@ class Device:
         (model features, components, converters, etc.) are retained.
 
         The returned tree can be passed directly to
-        :func:`~pyDSvDCAPI.device_template.strip_instance_fields` (which
+        :func:`~pydsvdcapi.device_template.strip_instance_fields` (which
         this method calls internally).
         """
-        from pyDSvDCAPI.device_template import strip_instance_fields
+        from pydsvdcapi.device_template import strip_instance_fields
         return strip_instance_fields(self.get_property_tree())
 
     def get_property_tree(self) -> Dict[str, Any]:

@@ -4,9 +4,9 @@ import asyncio
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import VdcConnection
-from pyDSvDCAPI.session import SUPPORTED_API_VERSION, SessionState, VdcSession
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import VdcConnection
+from pydsvdcapi.session import SUPPORTED_API_VERSION, SessionState, VdcSession
 
 
 HOST_DSUID = "198C033E330755E78015F97AD093DD1C00"

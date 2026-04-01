@@ -1188,6 +1188,194 @@ class TestVdcHostVdsdPropertyDispatch:
 
 
 # ===========================================================================
+# W3 — progMode / currentConfigId / configurations (§4.1.1)
+# ===========================================================================
+
+
+class TestW3OptionalProperties:
+    """Tests for the three W3 optional vdSD properties."""
+
+    # --- construction defaults -----------------------------------------
+
+    def test_defaults_are_none_or_empty(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device)
+
+        assert vdsd.prog_mode is None
+        assert vdsd.current_config_id is None
+        assert vdsd.configurations == []
+
+    def test_construct_with_all_w3_properties(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(
+            device,
+            prog_mode=True,
+            current_config_id="profile-A",
+            configurations=["profile-A", "profile-B"],
+        )
+
+        assert vdsd.prog_mode is True
+        assert vdsd.current_config_id == "profile-A"
+        assert vdsd.configurations == ["profile-A", "profile-B"]
+
+    def test_configurations_defensive_copy(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        orig = ["a", "b"]
+        vdsd = _make_vdsd(device, configurations=orig)
+
+        # Mutating the source or the getter must not affect the internal list.
+        orig.append("hacked")
+        assert "hacked" not in vdsd.configurations
+        returned = vdsd.configurations
+        returned.append("hacked2")
+        assert "hacked2" not in vdsd.configurations
+
+    # --- get_properties ------------------------------------------------
+
+    def test_get_properties_includes_w3_when_set(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(
+            device,
+            prog_mode=False,
+            current_config_id="cfg-1",
+            configurations=["cfg-1", "cfg-2"],
+        )
+
+        props = vdsd.get_properties()
+        assert props["progMode"] is False
+        assert props["currentConfigId"] == "cfg-1"
+        assert props["configurations"] == {
+            "0": {"id": "cfg-1"},
+            "1": {"id": "cfg-2"},
+        }
+
+    def test_get_properties_omits_configurations_when_empty(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device)
+
+        props = vdsd.get_properties()
+        assert "configurations" not in props
+
+    def test_get_properties_prog_mode_none(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device)
+
+        props = vdsd.get_properties()
+        assert props["progMode"] is None
+        assert props["currentConfigId"] is None
+
+    # --- property tree (persistence) -----------------------------------
+
+    def test_property_tree_includes_w3(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(
+            device,
+            prog_mode=True,
+            current_config_id="p-1",
+            configurations=["p-1", "p-2"],
+        )
+
+        tree = vdsd.get_property_tree()
+        assert tree["progMode"] is True
+        assert tree["currentConfigId"] == "p-1"
+        assert tree["configurations"] == ["p-1", "p-2"]
+
+    def test_property_tree_omits_configurations_when_empty(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device)
+
+        tree = vdsd.get_property_tree()
+        assert "configurations" not in tree
+
+    # --- state restoration (_apply_state) ------------------------------
+
+    def test_restore_w3_properties(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device)
+
+        vdsd._apply_state(
+            {
+                "progMode": True,
+                "currentConfigId": "restored-cfg",
+                "configurations": ["restored-cfg", "alt-cfg"],
+            }
+        )
+
+        assert vdsd.prog_mode is True
+        assert vdsd.current_config_id == "restored-cfg"
+        assert vdsd.configurations == ["restored-cfg", "alt-cfg"]
+
+    def test_restore_prog_mode_none(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device, prog_mode=True)
+
+        vdsd._apply_state({"progMode": None})
+        assert vdsd.prog_mode is None
+
+    def test_restore_preserves_w3_when_omitted(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(
+            device,
+            prog_mode=True,
+            current_config_id="keep",
+            configurations=["keep"],
+        )
+
+        vdsd._apply_state({"name": "Updated"})
+        assert vdsd.prog_mode is True
+        assert vdsd.current_config_id == "keep"
+        assert vdsd.configurations == ["keep"]
+
+    # --- setProperty (r/w progMode via vdc_host) -----------------------
+
+    def test_set_property_prog_mode(self):
+        host = _make_host()
+        vdc = _make_vdc(host)
+        host.add_vdc(vdc)
+        host._cancel_auto_save()
+
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device, subdevice_index=0)
+        device.add_vdsd(vdsd)
+        vdc.add_device(device)
+        host._cancel_auto_save()
+
+        req = pb.Message()
+        req.type = pb.VDSM_REQUEST_SET_PROPERTY
+        req.message_id = 300
+        req.vdsm_request_set_property.dSUID = str(vdsd.dsuid)
+        elem = req.vdsm_request_set_property.properties.add()
+        elem.name = "progMode"
+        elem.value.v_bool = True
+
+        resp = host._handle_set_property(req)
+        assert resp.generic_response.code == pb.ERR_OK
+        assert vdsd.prog_mode is True
+
+
+# ===========================================================================
 # Multi-vdSD device — dSUID relationships
 # ===========================================================================
 

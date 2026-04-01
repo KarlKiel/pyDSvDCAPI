@@ -106,6 +106,16 @@ ChannelAppliedCallback = Callable[
     Coroutine[Any, Any, None],
 ]
 
+#: Type alias for the dim-channel callback (§7.3.5).
+#: ``async def callback(output, channel, mode, area) -> None``
+#: where *channel* is the :class:`OutputChannel` being dimmed,
+#: *mode* is ``1`` (dim up), ``-1`` (dim down), or ``0`` (stop),
+#: and *area* is the area restriction (0 = none, 1..4).
+DimChannelCallback = Callable[
+    ["Output", "OutputChannel", int, int],
+    Coroutine[Any, Any, None],
+]
+
 
 # ---------------------------------------------------------------------------
 # Output function → auto-created channel types
@@ -409,6 +419,8 @@ class Output:
         self._pending_channel_updates: Dict[int, float] = {}
         #: Callback invoked when apply_now triggers hardware apply.
         self._on_channel_applied: Optional[ChannelAppliedCallback] = None
+        #: Callback invoked for dimChannel notifications (§7.3.5).
+        self._on_dim_channel: Optional[DimChannelCallback] = None
 
         # Auto-create channels from function.
         self._auto_create_channels()
@@ -416,10 +428,12 @@ class Output:
         # ---- scene table ---------------------------------------------
         #: Scene table: maps scene number (int) → scene entry dict.
         self._scenes: Dict[int, Dict[str, Any]] = {}
-        #: Last called scene number (for undo matching).
-        self._last_called_scene: Optional[int] = None
-        #: Snapshot of channel values before last call_scene (for undo).
-        self._undo_snapshot: Optional[Dict[int, float]] = None
+        #: Per-group last called scene number (for undo matching).
+        #: Maps group (int) → last called scene number.
+        self._last_called_scenes: Dict[int, int] = {}
+        #: Per-group undo snapshots of channel values before call_scene.
+        #: Maps group (int) → {dsIndex: value}.
+        self._undo_snapshots: Dict[int, Dict[int, float]] = {}
         # Populate default scenes.
         self._init_default_scenes()
 
@@ -684,6 +698,17 @@ class Output:
     ) -> None:
         self._on_channel_applied = callback
 
+    @property
+    def on_dim_channel(self) -> Optional[DimChannelCallback]:
+        """Callback invoked for dimChannel notifications (§7.3.5)."""
+        return self._on_dim_channel
+
+    @on_dim_channel.setter
+    def on_dim_channel(
+        self, callback: Optional[DimChannelCallback]
+    ) -> None:
+        self._on_dim_channel = callback
+
     def add_channel(
         self,
         channel_type: Union[OutputChannelType, int],
@@ -930,7 +955,9 @@ class Output:
                     ch_entries[target_idx] = ch_entry
         self._schedule_auto_save()
 
-    def call_scene(self, scene_nr: int, *, force: bool = False) -> None:
+    def call_scene(
+        self, scene_nr: int, *, force: bool = False, group: int = 0,
+    ) -> None:
         """Apply the stored scene values to the output channels.
 
         Parameters
@@ -939,6 +966,9 @@ class Output:
             The dS scene number to call.
         force:
             If ``True``, local priority is overridden.
+        group:
+            dS group number from the notification (0 = unspecified).
+            Used for per-group undo tracking.
 
         Behaviour:
 
@@ -947,7 +977,9 @@ class Output:
           scene's ``ignoreLocalPriority`` flag is set, do nothing.
         * For each channel, if the channel-level ``dontCare`` is not
           set, the stored value is applied.
-        * The undo snapshot is taken **before** values are changed.
+        * The undo snapshot is taken **before** values are changed,
+          keyed by *group* so that different groups can undo
+          independently.
         """
         entry = self._scenes.get(scene_nr)
         if entry is None:
@@ -972,12 +1004,12 @@ class Output:
                 )
                 return
 
-        # Take undo snapshot.
-        self._undo_snapshot = {
+        # Take undo snapshot keyed by group.
+        self._undo_snapshots[group] = {
             idx: ch.value for idx, ch in self._channels.items()
             if ch.value is not None
         }
-        self._last_called_scene = scene_nr
+        self._last_called_scenes[group] = scene_nr
 
         # Apply channel values.
         ch_entries = entry.get("channels", {})
@@ -1028,34 +1060,79 @@ class Output:
             scene_nr, self._name,
         )
 
-    def undo_scene(self, scene_nr: int) -> None:
+    def undo_scene(self, scene_nr: int, *, group: int = 0) -> None:
         """Undo the last scene call if it matches *scene_nr*.
 
         Restores channel values to the snapshot taken before the
-        matching ``call_scene``.  If the last called scene does not
-        match, or no snapshot exists, nothing happens.
+        matching ``call_scene``.  If the last called scene for the
+        given *group* does not match, or no snapshot exists, nothing
+        happens.
+
+        Parameters
+        ----------
+        scene_nr:
+            The scene number to undo — must match the last called
+            scene for *group*.
+        group:
+            dS group number (0 = unspecified).  Undo is tracked
+            per-group so that independent group scene calls can be
+            reverted independently.
         """
-        if self._last_called_scene != scene_nr:
+        if self._last_called_scenes.get(group) != scene_nr:
             logger.debug(
-                "undo_scene %d: last called was %s — ignoring",
-                scene_nr, self._last_called_scene,
+                "undo_scene %d (group %d): last called was %s — ignoring",
+                scene_nr, group,
+                self._last_called_scenes.get(group),
             )
             return
-        if self._undo_snapshot is None:
+        snapshot = self._undo_snapshots.get(group)
+        if snapshot is None:
             return
 
-        for idx, value in self._undo_snapshot.items():
+        for idx, value in snapshot.items():
             ch = self._channels.get(idx)
             if ch is not None:
                 ch.set_value_from_vdsm(value)
                 ch.confirm_applied()
 
         logger.debug(
-            "undo_scene %d: restored previous values for output '%s'",
-            scene_nr, self._name,
+            "undo_scene %d (group %d): restored previous values "
+            "for output '%s'",
+            scene_nr, group, self._name,
         )
-        self._undo_snapshot = None
-        self._last_called_scene = None
+        del self._undo_snapshots[group]
+        del self._last_called_scenes[group]
+
+    # ==================================================================
+    # dimChannel (§7.3.5)
+    # ==================================================================
+
+    async def dim_channel(
+        self,
+        channel: OutputChannel,
+        mode: int,
+        area: int = 0,
+    ) -> None:
+        """Handle a dimChannel notification for this output.
+
+        Parameters
+        ----------
+        channel:
+            The channel to dim.
+        mode:
+            ``1`` = start dimming up, ``-1`` = start dimming down,
+            ``0`` = stop dimming.
+        area:
+            Area restriction (0 = none, 1..4).
+        """
+        if self._on_dim_channel is not None:
+            try:
+                await self._on_dim_channel(self, channel, mode, area)
+            except Exception:
+                logger.exception(
+                    "on_dim_channel callback raised for output '%s'",
+                    self._name,
+                )
 
     # ==================================================================
     # apply_now buffering (§7.3.9)

@@ -4,13 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from pyDSvDCAPI import genericVDC_pb2 as pb
 from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
+from pyDSvDCAPI.enums import ColorGroup
+from pyDSvDCAPI.session import VdcSession
+from pyDSvDCAPI.vdc import Vdc
 from pyDSvDCAPI.vdc_host import (
     DEFAULT_VDC_PORT,
     ENTITY_TYPE_VDC_HOST,
     VDC_SERVICE_TYPE,
     VdcHost,
 )
+from pyDSvDCAPI.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------
@@ -354,3 +359,340 @@ class TestRepr:
         assert "VdcHost" in r
         assert "TestHost" in r
         assert str(host.port) in r
+
+
+# ---------------------------------------------------------------------------
+# remove handler (§6.3)
+# ---------------------------------------------------------------------------
+
+def _make_host_with_device():
+    """Create a host → vdc → device → vdsd stack for remove tests."""
+    host = VdcHost(mac=TEST_MAC, name="Remove Test Host")
+    host._cancel_auto_save()
+    vdc = Vdc(
+        host=host,
+        implementation_id="x-test-remove",
+        name="Remove vDC",
+        model="RM v1",
+    )
+    base = DsUid.from_name_in_space("remove-test", DsUidNamespace.VDC)
+    device = Device(vdc=vdc, dsuid=base)
+    vdsd = Vdsd(
+        device=device, primary_group=ColorGroup.YELLOW, name="RemoveDev",
+    )
+    device.add_vdsd(vdsd)
+    vdc.add_device(device)
+    host.add_vdc(vdc)
+    return host, vdc, device, vdsd
+
+
+def _make_remove_msg(dsuid_str: str, msg_id: int = 42) -> pb.Message:
+    """Build a VDSM_SEND_REMOVE protobuf message."""
+    msg = pb.Message()
+    msg.type = pb.VDSM_SEND_REMOVE
+    msg.message_id = msg_id
+    msg.vdsm_send_remove.dSUID = dsuid_str
+    return msg
+
+
+class TestHandleRemove:
+    """Tests for VdcHost._handle_remove (§6.3)."""
+
+    @pytest.mark.asyncio
+    async def test_remove_success_default(self):
+        """Without on_remove callback, removal is accepted."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid)
+        msg = _make_remove_msg(dsuid_str)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_OK
+        assert resp.message_id == 42
+        # Device should be gone from the vDC.
+        assert vdc.get_device(vdsd.dsuid) is None
+
+    @pytest.mark.asyncio
+    async def test_remove_not_found(self):
+        """Removing an unknown dSUID returns ERR_NOT_FOUND."""
+        host, _, _, _ = _make_host_with_device()
+        fake_dsuid = "00" * 17
+        msg = _make_remove_msg(fake_dsuid)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_remove_callback_allows(self):
+        """When on_remove returns True, removal proceeds."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid)
+
+        received_dsuids = []
+
+        async def allow_remove(ds: str) -> bool:
+            received_dsuids.append(ds)
+            return True
+
+        host._on_remove = allow_remove
+        msg = _make_remove_msg(dsuid_str)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_OK
+        assert dsuid_str in received_dsuids
+        assert vdc.get_device(vdsd.dsuid) is None
+
+    @pytest.mark.asyncio
+    async def test_remove_callback_rejects(self):
+        """When on_remove returns False, ERR_FORBIDDEN is returned."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid)
+
+        async def reject_remove(ds: str) -> bool:
+            return False
+
+        host._on_remove = reject_remove
+        msg = _make_remove_msg(dsuid_str)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_FORBIDDEN
+        # Device should still be present.
+        assert vdc.get_device(vdsd.dsuid) is not None
+
+    @pytest.mark.asyncio
+    async def test_remove_callback_exception_rejects(self):
+        """If on_remove raises, removal is rejected with ERR_FORBIDDEN."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid)
+
+        async def bad_callback(ds: str) -> bool:
+            raise RuntimeError("oops")
+
+        host._on_remove = bad_callback
+        msg = _make_remove_msg(dsuid_str)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_FORBIDDEN
+        # Device should still be present.
+        assert vdc.get_device(vdsd.dsuid) is not None
+
+    @pytest.mark.asyncio
+    async def test_remove_lowercase_dsuid(self):
+        """dSUID matching is case-insensitive."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid).lower()
+        msg = _make_remove_msg(dsuid_str)
+
+        resp = await host._handle_remove(msg)
+
+        assert resp.generic_response.code == pb.ERR_OK
+
+    @pytest.mark.asyncio
+    async def test_remove_dispatch_integration(self):
+        """VDSM_SEND_REMOVE is dispatched through _dispatch_message."""
+        host, vdc, device, vdsd = _make_host_with_device()
+        dsuid_str = str(vdsd.dsuid)
+        msg = _make_remove_msg(dsuid_str)
+
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        resp = await host._dispatch_message(session, msg)
+
+        assert resp is not None
+        assert resp.generic_response.code == pb.ERR_OK
+
+
+# ---------------------------------------------------------------------------
+# identify handler (§7.3.7 notification + §7.4.5 GenericRequest)
+# ---------------------------------------------------------------------------
+
+
+def _make_identify_notif_msg(
+    *dsuid_strs: str,
+) -> "pb.Message":
+    """Build a VDSM_NOTIFICATION_IDENTIFY protobuf message."""
+    msg = pb.Message()
+    msg.type = pb.VDSM_NOTIFICATION_IDENTIFY
+    for ds in dsuid_strs:
+        msg.vdsm_send_identify.dSUID.append(ds)
+    return msg
+
+
+def _make_identify_generic_msg(
+    dsuid_str: str, msg_id: int = 99,
+) -> "pb.Message":
+    """Build a GenericRequest 'identify' protobuf message."""
+    msg = pb.Message()
+    msg.type = pb.VDSM_REQUEST_GENERIC_REQUEST
+    msg.message_id = msg_id
+    msg.vdsm_request_generic_request.methodname = "identify"
+    msg.vdsm_request_generic_request.dSUID = dsuid_str
+    return msg
+
+
+class TestHandleIdentifyNotification:
+    """Tests for VDSM_NOTIFICATION_IDENTIFY dispatch (§7.3.7)."""
+
+    @pytest.mark.asyncio
+    async def test_identify_invokes_callback(self):
+        """identify notification calls Vdsd.identify()."""
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        cb = AsyncMock()
+        vdsd.on_identify = cb
+
+        msg = _make_identify_notif_msg(str(vdsd.dsuid))
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)
+
+        cb.assert_awaited_once_with(vdsd)
+
+    @pytest.mark.asyncio
+    async def test_identify_unknown_dsuid_skipped(self):
+        """identify for unknown dSUID is silently skipped."""
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        cb = AsyncMock()
+        vdsd.on_identify = cb
+
+        msg = _make_identify_notif_msg("00" * 17)
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)
+
+        cb.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_identify_no_callback_no_error(self):
+        """identify without on_identify callback does not raise."""
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        assert vdsd.on_identify is None
+
+        msg = _make_identify_notif_msg(str(vdsd.dsuid))
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)  # Should not raise
+
+    @pytest.mark.asyncio
+    async def test_identify_callback_exception_caught(self):
+        """Exception in on_identify callback is caught, not propagated."""
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        cb = AsyncMock(side_effect=RuntimeError("boom"))
+        vdsd.on_identify = cb
+
+        msg = _make_identify_notif_msg(str(vdsd.dsuid))
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)  # Should not raise
+
+        cb.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_identify_multiple_dsuids(self):
+        """identify notification with multiple dSUIDs calls each."""
+        host = VdcHost(mac=TEST_MAC, name="Multi-ID Host")
+        host._cancel_auto_save()
+        vdc = Vdc(
+            host=host,
+            implementation_id="x-test-id",
+            name="ID vDC",
+            model="ID v1",
+        )
+
+        base1 = DsUid.from_name_in_space("id-test-1", DsUidNamespace.VDC)
+        dev1 = Device(vdc=vdc, dsuid=base1)
+        vdsd1 = Vdsd(device=dev1, primary_group=ColorGroup.YELLOW, name="Dev1")
+        dev1.add_vdsd(vdsd1)
+        vdc.add_device(dev1)
+
+        base2 = DsUid.from_name_in_space("id-test-2", DsUidNamespace.VDC)
+        dev2 = Device(vdc=vdc, dsuid=base2)
+        vdsd2 = Vdsd(device=dev2, primary_group=ColorGroup.YELLOW, name="Dev2")
+        dev2.add_vdsd(vdsd2)
+        vdc.add_device(dev2)
+
+        host.add_vdc(vdc)
+
+        cb1 = AsyncMock()
+        cb2 = AsyncMock()
+        vdsd1.on_identify = cb1
+        vdsd2.on_identify = cb2
+
+        msg = _make_identify_notif_msg(str(vdsd1.dsuid), str(vdsd2.dsuid))
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)
+
+        cb1.assert_awaited_once_with(vdsd1)
+        cb2.assert_awaited_once_with(vdsd2)
+
+    @pytest.mark.asyncio
+    async def test_identify_sync_callback(self):
+        """on_identify also works with a synchronous callback."""
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        called_with = []
+
+        def sync_cb(v):
+            called_with.append(v)
+
+        vdsd.on_identify = sync_cb
+
+        msg = _make_identify_notif_msg(str(vdsd.dsuid))
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        await host._dispatch_message(session, msg)
+
+        assert called_with == [vdsd]
+
+
+class TestHandleIdentifyGenericRequest:
+    """Tests for GenericRequest 'identify' (§7.4.5)."""
+
+    @pytest.mark.asyncio
+    async def test_identify_generic_with_callback(self):
+        """GenericRequest identify invokes on_identify callback."""
+        host, _vdc, _device, _vdsd = _make_host_with_device()
+        cb = AsyncMock()
+        host._on_identify = cb
+
+        vdc_dsuid = str(list(host._vdcs.values())[0].dsuid)
+        msg = _make_identify_generic_msg(vdc_dsuid)
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        resp = await host._dispatch_message(session, msg)
+
+        assert resp.generic_response.code == pb.ERR_OK
+        cb.assert_awaited_once_with(vdc_dsuid)
+
+    @pytest.mark.asyncio
+    async def test_identify_generic_no_callback(self):
+        """GenericRequest identify without callback returns ERR_OK."""
+        host, _vdc, _device, _vdsd = _make_host_with_device()
+        assert host._on_identify is None
+
+        vdc_dsuid = str(list(host._vdcs.values())[0].dsuid)
+        msg = _make_identify_generic_msg(vdc_dsuid)
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        resp = await host._dispatch_message(session, msg)
+
+        assert resp.generic_response.code == pb.ERR_OK
+
+    @pytest.mark.asyncio
+    async def test_identify_generic_callback_exception(self):
+        """GenericRequest identify with failing callback returns ERR_NOT_IMPLEMENTED."""
+        host, _vdc, _device, _vdsd = _make_host_with_device()
+        cb = AsyncMock(side_effect=RuntimeError("hardware fault"))
+        host._on_identify = cb
+
+        vdc_dsuid = str(list(host._vdcs.values())[0].dsuid)
+        msg = _make_identify_generic_msg(vdc_dsuid)
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        resp = await host._dispatch_message(session, msg)
+
+        assert resp.generic_response.code == pb.ERR_NOT_IMPLEMENTED
+        assert "hardware fault" in resp.generic_response.description

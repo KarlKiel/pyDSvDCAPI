@@ -55,12 +55,14 @@ import time
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
@@ -99,10 +101,13 @@ class DeviceState:
         "_value",
         "_last_update",
         "_last_change",
+        "_uplink_converter_code",
+        "_uplink_converter_fn",
     )
 
     def __init__(
         self,
+        *,
         vdsd: Vdsd,
         ds_index: int = 0,
         name: str = "",
@@ -123,6 +128,10 @@ class DeviceState:
         # Timestamps for age/changed reporting (monotonic seconds).
         self._last_update: Optional[float] = None
         self._last_change: Optional[float] = None
+
+        # ---- value converter (optional, persisted) -------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
 
     # ---- read-only accessors -----------------------------------------
 
@@ -164,6 +173,44 @@ class DeviceState:
     @description.setter
     def description(self, value: Optional[str]) -> None:
         self._description = value
+
+    # ---- converter management ---------------------------------------
+
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        Applied in :meth:`update_value` before the value is resolved
+        against the options dictionary.  The snippet manipulates
+        ``value`` (the raw incoming int or str).  The library appends
+        ``return value`` automatically.
+
+        Pass ``None`` to remove a previously set converter.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Example
+        -------
+        ::
+
+            st.set_uplink_converter(\"\"\"
+            mapping = {"STOPPED": 0, "PLAYING": 2}
+            value = mapping.get(str(value), 0)
+            \"\"\")
+        """
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
+
+    @property
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
 
     # ---- volatile state accessors ------------------------------------
 
@@ -312,6 +359,8 @@ class DeviceState:
             }
         if self._description is not None:
             node["description"] = self._description
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
         return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
@@ -334,6 +383,12 @@ class DeviceState:
                 }
         if "description" in state:
             self._description = state.get("description")
+        # Converter
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
 
     # ---- push to vdSM ------------------------------------------------
 
@@ -357,7 +412,14 @@ class DeviceState:
         locally, but the push is skipped with a warning.
         """
         old = self._value
-        self._value = self._resolve_value(value)
+        self._value = self._resolve_value(
+            apply_converter(
+                self._uplink_converter_fn,
+                value,
+                component_id=f"DeviceState[{self._ds_index}] '{self._name}'",
+                direction="uplink",
+            )
+        )
         if self._value is not None:
             now = time.monotonic()
             self._last_update = now

@@ -143,6 +143,23 @@ InvokeActionCallback = Callable[
     Union[None, Awaitable[None]],
 ]
 
+#: Type alias for the identify callback.
+#:
+#: Signature::
+#:
+#:     async def callback(vdsd) -> None
+#:     # or sync:
+#:     def callback(vdsd) -> None
+#:
+#: ``vdsd`` is the :class:`Vdsd` instance that received the
+#: identify notification (§7.3.7).  The callback should trigger
+#: a visual or acoustic identification signal on the native
+#: device (e.g. blink an LED, beep, etc.).
+IdentifyCallback = Callable[
+    ["Vdsd"],
+    Union[None, Awaitable[None]],
+]
+
 
 # ---------------------------------------------------------------------------
 # Vdsd — one API-visible device
@@ -250,6 +267,9 @@ class Vdsd:
         device_class_version: Optional[str] = None,
         zone_id: int = 0,
         model_features: Optional[Set[str]] = None,
+        prog_mode: Optional[bool] = None,
+        current_config_id: Optional[str] = None,
+        configurations: Optional[List[str]] = None,
     ) -> None:
         # Auto-save must be disabled during construction.
         self._auto_save_enabled: bool = False
@@ -289,6 +309,11 @@ class Vdsd:
         self._model_features: Set[str] = (
             set(model_features) if model_features else set()
         )
+        self.prog_mode: Optional[bool] = prog_mode
+        self.current_config_id: Optional[str] = current_config_id
+        self._configurations: List[str] = (
+            list(configurations) if configurations else []
+        )
 
         # --- components -----------------------------------------------
         self._binary_inputs: Dict[int, BinaryInput] = {}
@@ -317,6 +342,7 @@ class Vdsd:
         self._control_values: Dict[str, Dict[str, Any]] = {}
         self._on_control_value: Optional[ControlValueCallback] = None
         self._on_invoke_action: Optional[InvokeActionCallback] = None
+        self._on_identify: Optional[IdentifyCallback] = None
 
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
@@ -374,6 +400,14 @@ class Vdsd:
         :meth:`remove_model_feature`.
         """
         return set(self._model_features)
+
+    @property
+    def configurations(self) -> List[str]:
+        """List of supported configuration/profile IDs (§4.1.1, read-only).
+
+        Set via constructor or persistence restore.
+        """
+        return list(self._configurations)
 
     @property
     def device(self) -> Device:
@@ -461,6 +495,40 @@ class Vdsd:
                 await result
 
     @property
+    def on_identify(self) -> Optional[IdentifyCallback]:
+        """Callback invoked when the vdSM sends an identify notification (§7.3.7)."""
+        return self._on_identify
+
+    @on_identify.setter
+    def on_identify(
+        self, callback: Optional[IdentifyCallback]
+    ) -> None:
+        self._on_identify = callback
+
+    async def identify(self) -> None:
+        """Handle an identify notification from the vdSM (§7.3.7).
+
+        Triggers the ``on_identify`` callback so the user can
+        implement a visual/acoustic identification signal on the
+        native device (e.g. blink an LED, beep, vibrate).
+        """
+        logger.info(
+            "vdSD %s: identify requested", self._dsuid,
+        )
+        if self._on_identify is not None:
+            import asyncio as _asyncio
+
+            try:
+                result = self._on_identify(self)
+                if _asyncio.iscoroutine(result):
+                    await result
+            except Exception:
+                logger.exception(
+                    "on_identify callback raised for vdSD '%s'",
+                    self.name,
+                )
+
+    @property
     def on_invoke_action(self) -> Optional[InvokeActionCallback]:
         """Callback invoked when the vdSM invokes a device action (§7.3.10)."""
         return self._on_invoke_action
@@ -508,6 +576,60 @@ class Vdsd:
     def remove_model_feature(self, feature: str) -> None:
         """Remove a model feature flag (no-op if absent)."""
         self._model_features.discard(feature)
+
+    def derive_model_features(self) -> None:
+        """Derive and add model-feature flags from the configured components.
+
+        Applies the following rules, adding to any already-set features
+        (duplicates are prevented automatically):
+
+        * Any output present → ``"dontCare"``
+        * Binary input with ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
+        * Binary input with ``sensorFunction`` in {13, 14, 15} → ``"window"``
+        * Any sensor input present → ``"sensor"``
+        * Sensor input with ``sensorType`` 1 → ``"temperature"``
+        * Sensor input with ``sensorType`` 2 → ``"humidity"``
+        * Sensor input with ``sensorType`` 14 → ``"energy"``
+        * Output with ``activeGroup`` 1 → ``"light"``
+        * Output with ``function`` in {1, 3, 4} → ``"dimmable"``
+        * Output with ``activeGroup`` 2 **and** ``function`` 2 → ``"shade"``
+
+        This method is automatically called at the start of
+        :meth:`announce` so that all components registered before
+        announcement are taken into account.  It may also be called
+        manually to preview or refresh the flags after adding or
+        removing components.
+        """
+        if self._output is not None:
+            self._model_features.add("dontCare")
+
+        for bi in self._binary_inputs.values():
+            sf = int(bi.sensor_function)
+            if sf in {1, 3, 5, 6}:
+                self._model_features.add("presence")
+            if sf in {13, 14, 15}:
+                self._model_features.add("window")
+
+        if self._sensor_inputs:
+            self._model_features.add("sensor")
+            for si in self._sensor_inputs.values():
+                st = int(si.sensor_type)
+                if st == 1:
+                    self._model_features.add("temperature")
+                elif st == 2:
+                    self._model_features.add("humidity")
+                elif st == 14:
+                    self._model_features.add("energy")
+
+        if self._output is not None:
+            ag = self._output.active_group
+            fn = int(self._output.function)
+            if ag == 1:
+                self._model_features.add("light")
+            if fn in {1, 3, 4}:
+                self._model_features.add("dimmable")
+            if ag == 2 and fn == 2:
+                self._model_features.add("shade")
 
     # ---- binary input management -------------------------------------
 
@@ -1167,6 +1289,8 @@ class Vdsd:
             # vdSD-specific properties
             "primaryGroup": int(self._primary_group),
             "zoneID": self.zone_id,
+            "progMode": self.prog_mode,
+            "currentConfigId": self.current_config_id,
         }
         # modelFeatures — each enabled feature is a boolean True element.
         if self._model_features:
@@ -1175,6 +1299,13 @@ class Vdsd:
             }
         else:
             props["modelFeatures"] = {}
+
+        # configurations (§4.1.1) — list of config/profile IDs.
+        if self._configurations:
+            props["configurations"] = {
+                str(i): {"id": cid}
+                for i, cid in enumerate(self._configurations)
+            }
 
         # Button input component properties (§4.2 / §4.1.2).
         if self._button_inputs:
@@ -1372,7 +1503,11 @@ class Vdsd:
             "deviceClass": self.device_class,
             "deviceClassVersion": self.device_class_version,
             "zoneID": self.zone_id,
+            "progMode": self.prog_mode,
+            "currentConfigId": self.current_config_id,
         }
+        if self._configurations:
+            node["configurations"] = list(self._configurations)
         if self._model_features:
             node["modelFeatures"] = sorted(self._model_features)
 
@@ -1499,6 +1634,13 @@ class Vdsd:
                 self.zone_id = int(state["zoneID"])
             if "modelFeatures" in state:
                 self._model_features = set(state["modelFeatures"])
+            if "progMode" in state:
+                val = state["progMode"]
+                self.prog_mode = bool(val) if val is not None else None
+            if "currentConfigId" in state:
+                self.current_config_id = state["currentConfigId"]
+            if "configurations" in state:
+                self._configurations = list(state["configurations"])
 
             # Restore button inputs.
             if "buttonInputs" in state:
@@ -1655,6 +1797,7 @@ class Vdsd:
         bool
             ``True`` if the vdSM accepted the announcement.
         """
+        self.derive_model_features()
         vdc = self._device.vdc
         msg = pb.Message()
         msg.type = pb.VDC_SEND_ANNOUNCE_DEVICE
@@ -1786,6 +1929,10 @@ class Device:
         # Ordered list preserving insertion order.
         self._vdsds: Dict[int, Vdsd] = {}  # keyed by subdevice_index
         self._announced: bool = False
+        # Required-callbacks manifest set by DeviceTemplate.instantiate().
+        # None means no template was used; an empty dict means all callbacks
+        # were already satisfied at template instantiation time.
+        self._required_callbacks: Optional[Dict[str, None]] = None
 
     # ---- accessors ---------------------------------------------------
 
@@ -1882,6 +2029,41 @@ class Device:
 
     # ---- announcement ------------------------------------------------
 
+    def _check_required_callbacks(self) -> List[str]:
+        """Return a list of required-callback paths that are still unset.
+
+        Only called when ``self._required_callbacks`` is not ``None``
+        (i.e. the device was created from a template).
+        """
+        vdsds_by_index = {
+            idx: vdsd for idx, vdsd in enumerate(self._vdsds.values())
+        }
+        missing: List[str] = []
+        for path in (self._required_callbacks or {}):
+            # Parse path: "vdsds[N].attr" or "vdsds[N].output.attr"
+            if path.startswith("vdsds["):
+                # Extract index and remainder.
+                bracket_end = path.index("]")
+                idx = int(path[6:bracket_end])
+                remainder = path[bracket_end + 2:]  # skip "]."
+                vdsd = vdsds_by_index.get(idx)
+                if vdsd is None:
+                    missing.append(path)
+                    continue
+                if "." in remainder:
+                    # e.g. "output.on_channel_applied"
+                    component_name, attr = remainder.split(".", 1)
+                    component = getattr(vdsd, f"_{component_name}", None)
+                    if component is None:
+                        missing.append(path)
+                        continue
+                    if getattr(component, attr, None) is None:
+                        missing.append(path)
+                else:
+                    if getattr(vdsd, remainder, None) is None:
+                        missing.append(path)
+        return missing
+
     async def announce(self, session: VdcSession) -> int:
         """Announce all contained vdSDs to the vdSM.
 
@@ -1909,6 +2091,14 @@ class Device:
                 "Device is already announced.  "
                 "Use device.update() to re-announce after changes."
             )
+
+        # If this device was created from a template, verify that all
+        # required callbacks have been set before we send any protobuf.
+        if self._required_callbacks is not None:
+            missing = self._check_required_callbacks()
+            if missing:
+                from pyDSvDCAPI.device_template import AnnouncementNotReadyError
+                raise AnnouncementNotReadyError(missing)
 
         count = 0
         for vdsd in self._vdsds.values():
@@ -2007,6 +2197,21 @@ class Device:
         self._announced = False
 
     # ---- persistence -------------------------------------------------
+
+    def get_template_tree(self) -> Dict[str, Any]:
+        """Return the Device data stripped of instance-specific fields,
+        suitable for saving as a device template.
+
+        Strips ``baseDsUID`` at the Device level, and ``dSUID``, ``name``,
+        ``zoneID`` from each vdSD.  All structural and semantic fields
+        (model features, components, converters, etc.) are retained.
+
+        The returned tree can be passed directly to
+        :func:`~pyDSvDCAPI.device_template.strip_instance_fields` (which
+        this method calls internally).
+        """
+        from pyDSvDCAPI.device_template import strip_instance_fields
+        return strip_instance_fields(self.get_property_tree())
 
     def get_property_tree(self) -> Dict[str, Any]:
         """Return the Device data for inclusion in the Vdc's persisted

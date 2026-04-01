@@ -21,29 +21,6 @@ is active, the library automatically pushes a
 ``VDC_SEND_PUSH_NOTIFICATION`` notification to the vdSM carrying the
 ``binaryInputStates`` property change (§7.1.3).
 
-Push throttling
-~~~~~~~~~~~~~~~
-
-Two settings control push frequency:
-
-* **minPushInterval** — minimum seconds between consecutive pushes.
-  Rapid value changes within this window are coalesced into one
-  deferred push.
-* **changesOnlyInterval** — minimum seconds between pushes of the
-  *same* value.  Hardware re-reports of an unchanged value are
-  suppressed within this window.
-
-Alive signalling
-~~~~~~~~~~~~~~~~
-
-When :attr:`BinaryInput.alive_sign_interval` is non-zero the library
-automatically re-pushes the current state at that interval as a
-heartbeat.  If no push (neither from a value change nor from the alive
-timer) reaches the vdSM within ``aliveSignInterval`` seconds, the
-sensor should be considered out of order.  Timers are started
-automatically when the owning vdSD is announced and stopped on vanish
-or session disconnect.
-
 Persistence
 ~~~~~~~~~~~
 
@@ -71,18 +48,19 @@ Usage::
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.enums import BinaryInputType, BinaryInputUsage, InputError
 from pyDSvDCAPI.property_handling import dict_to_elements
 
@@ -134,17 +112,6 @@ class BinaryInput:
         If the physical function is fixed in hardware, set this to the
         matching :class:`BinaryInputType` value.  Defaults to
         ``GENERIC`` (freely configurable).
-    alive_sign_interval:
-        Maximum seconds between pushes before the sensor is considered
-        out of order.  When non-zero the library re-pushes state
-        automatically.  ``0.0`` disables alive signalling (default).
-    min_push_interval:
-        Minimum seconds between consecutive push notifications.
-        Rapid value changes within this window are coalesced.  ``0.0``
-        disables rate-limiting (default).
-    changes_only_interval:
-        Minimum seconds between pushes of unchanged values.  ``0.0``
-        means every hardware update triggers a push (default).
     """
 
     def __init__(
@@ -159,9 +126,6 @@ class BinaryInput:
         name: str = "",
         update_interval: float = 0.0,
         hardwired_function: BinaryInputType = BinaryInputType.GENERIC,
-        alive_sign_interval: float = 0.0,
-        min_push_interval: float = 0.0,
-        changes_only_interval: float = 0.0,
     ) -> None:
         # ---- parent reference ----------------------------------------
         self._vdsd: Vdsd = vdsd
@@ -173,13 +137,10 @@ class BinaryInput:
         self._hardwired_function: BinaryInputType = hardwired_function
         self._name: str = name
         self._update_interval: float = update_interval
-        self._alive_sign_interval: float = alive_sign_interval
 
         # ---- settings properties (read/write, persisted) -------------
         self._group: int = group
         self._sensor_function: BinaryInputType = sensor_function
-        self._min_push_interval: float = min_push_interval
-        self._changes_only_interval: float = changes_only_interval
 
         # ---- state properties (volatile, NOT persisted) --------------
         self._value: Optional[bool] = None
@@ -189,12 +150,12 @@ class BinaryInput:
         #: Monotonic timestamp of the last value update (for age calc).
         self._last_update: Optional[float] = None
 
-        # ---- push throttling / alive timer state ---------------------
+        # ---- session (stored by start_alive_timer for push fallback) -
         self._session: Optional[VdcSession] = None
-        self._last_push_time: Optional[float] = None
-        self._last_pushed_state: Optional[tuple] = None
-        self._alive_timer_handle: Optional[asyncio.TimerHandle] = None
-        self._deferred_push_handle: Optional[asyncio.TimerHandle] = None
+
+        # ---- value converter (optional, persisted) -------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
 
     # ---- read-only accessors -----------------------------------------
 
@@ -233,16 +194,6 @@ class BinaryInput:
         return self._update_interval
 
     @property
-    def alive_sign_interval(self) -> float:
-        """Maximum expected interval between pushes in seconds.
-
-        If no push happens within this interval, the vdSM may
-        consider the sensor out of order.  ``0.0`` means no alive
-        signalling.
-        """
-        return self._alive_sign_interval
-
-    @property
     def vdsd(self) -> Vdsd:
         """The owning :class:`Vdsd`."""
         return self._vdsd
@@ -269,32 +220,55 @@ class BinaryInput:
         self._sensor_function = BinaryInputType(int(value))
         self._schedule_auto_save()
 
-    @property
-    def min_push_interval(self) -> float:
-        """Minimum seconds between consecutive pushes (writable, persisted).
+    # ---- converter management ---------------------------------------
 
-        Default ``0.0`` disables rate-limiting.
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        The converter snippet is a block of Python code that
+        manipulates the pre-bound variable ``value`` (the raw incoming
+        binary input value).  The library appends ``return value``
+        automatically — no return statement is needed.  The same
+        converter is applied to both boolean updates
+        (:meth:`update_value`) and integer extended-value updates
+        (:meth:`update_extended_value`).
+
+        Pass ``None`` to remove a previously set converter.
+
+        Parameters
+        ----------
+        code:
+            Python snippet string, or ``None`` to clear.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Examples
+        --------
+        Invert a boolean input::
+
+            bi.set_uplink_converter("value = not value")
+
+        Map integer extended value::
+
+            bi.set_uplink_converter(\"\"\"
+            if isinstance(value, int):
+                value = value > 0
+            \"\"\")
         """
-        return self._min_push_interval
-
-    @min_push_interval.setter
-    def min_push_interval(self, value: float) -> None:
-        self._min_push_interval = float(value)
-        self._schedule_auto_save()
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
 
     @property
-    def changes_only_interval(self) -> float:
-        """Minimum seconds between pushes of unchanged values (writable, persisted).
-
-        Default ``0.0`` means every hardware update triggers a push
-        regardless of whether the value changed.
-        """
-        return self._changes_only_interval
-
-    @changes_only_interval.setter
-    def changes_only_interval(self, value: float) -> None:
-        self._changes_only_interval = float(value)
-        self._schedule_auto_save()
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
 
     # ---- state accessors (volatile) ----------------------------------
 
@@ -345,6 +319,12 @@ class BinaryInput:
             ``None`` or the vdSD is not announced, the value is stored
             locally but no push is sent.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"BinaryInput[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._value = value
         self._extended_value = None  # bool takes precedence
         self._last_update = time.monotonic()
@@ -369,6 +349,12 @@ class BinaryInput:
         session:
             Active session to send the push notification on.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"BinaryInput[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._extended_value = value
         self._value = None  # extended takes precedence
         self._last_update = time.monotonic()
@@ -413,7 +399,6 @@ class BinaryInput:
             "inputUsage": int(self._input_usage),
             "sensorFunction": int(self._hardwired_function),
             "updateInterval": self._update_interval,
-            "aliveSignInterval": self._alive_sign_interval,
         }
 
     def get_settings_properties(self) -> Dict[str, Any]:
@@ -424,8 +409,6 @@ class BinaryInput:
         return {
             "group": self._group,
             "sensorFunction": int(self._sensor_function),
-            "minPushInterval": self._min_push_interval,
-            "changesOnlyInterval": self._changes_only_interval,
         }
 
     def get_state_properties(self) -> Dict[str, Any]:
@@ -465,16 +448,6 @@ class BinaryInput:
                 int(incoming["sensorFunction"])
             )
             changed = True
-        if "minPushInterval" in incoming:
-            self._min_push_interval = float(
-                incoming["minPushInterval"]
-            )
-            changed = True
-        if "changesOnlyInterval" in incoming:
-            self._changes_only_interval = float(
-                incoming["changesOnlyInterval"]
-            )
-            changed = True
         if changed:
             logger.debug(
                 "BinaryInput[%d] settings updated: group=%d, "
@@ -492,20 +465,20 @@ class BinaryInput:
         Only description and settings properties are included (state
         is volatile and not persisted).
         """
-        return {
+        node: Dict[str, Any] = {
             "dsIndex": self._ds_index,
             "name": self._name,
             "inputType": self._input_type,
             "inputUsage": int(self._input_usage),
             "hardwiredFunction": int(self._hardwired_function),
             "updateInterval": self._update_interval,
-            "aliveSignInterval": self._alive_sign_interval,
             # Settings (writable)
             "group": self._group,
             "sensorFunction": int(self._sensor_function),
-            "minPushInterval": self._min_push_interval,
-            "changesOnlyInterval": self._changes_only_interval,
         }
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
+        return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
         """Restore from a persisted property tree dict.
@@ -529,10 +502,6 @@ class BinaryInput:
             )
         if "updateInterval" in state:
             self._update_interval = float(state["updateInterval"])
-        if "aliveSignInterval" in state:
-            self._alive_sign_interval = float(
-                state["aliveSignInterval"]
-            )
         # Settings
         if "group" in state:
             self._group = int(state["group"])
@@ -540,40 +509,25 @@ class BinaryInput:
             self._sensor_function = BinaryInputType(
                 int(state["sensorFunction"])
             )
-        if "minPushInterval" in state:
-            self._min_push_interval = float(
-                state["minPushInterval"]
-            )
-        if "changesOnlyInterval" in state:
-            self._changes_only_interval = float(
-                state["changesOnlyInterval"]
-            )
+        # Converter
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
 
     # ---- push notification -------------------------------------------
-
-    def _current_state_key(self) -> tuple:
-        """Return a hashable key representing the current value state.
-
-        Used by ``changesOnlyInterval`` to detect unchanged values.
-        """
-        return (self._value, self._extended_value)
 
     async def _push_state(
         self,
         session: Optional[VdcSession],
-        *,
-        force: bool = False,
     ) -> None:
-        """Push current state, respecting throttling.
+        """Push current state to the vdSM.
 
         Parameters
         ----------
         session:
             Session to push on.  ``None`` → no push.
-        force:
-            If ``True``, bypass ``minPushInterval`` and
-            ``changesOnlyInterval`` throttling (used by the alive
-            timer).
         """
         if session is None:
             return
@@ -584,49 +538,6 @@ class BinaryInput:
             )
             return
 
-        now = time.monotonic()
-        current_key = self._current_state_key()
-
-        if not force and self._last_push_time is not None:
-            elapsed = now - self._last_push_time
-
-            # changesOnlyInterval: suppress same-value pushes.
-            if (
-                self._changes_only_interval > 0
-                and current_key == self._last_pushed_state
-                and elapsed < self._changes_only_interval
-            ):
-                logger.debug(
-                    "BinaryInput[%d]: same value within "
-                    "changesOnlyInterval (%.1fs) — skipping push",
-                    self._ds_index,
-                    self._changes_only_interval,
-                )
-                return
-
-            # minPushInterval: rate-limit pushes.
-            if (
-                self._min_push_interval > 0
-                and elapsed < self._min_push_interval
-            ):
-                delay = self._min_push_interval - elapsed
-                logger.debug(
-                    "BinaryInput[%d]: within minPushInterval — "
-                    "deferring push by %.2fs",
-                    self._ds_index, delay,
-                )
-                self._schedule_deferred_push(session, delay)
-                return
-
-        await self._do_push(session)
-
-    async def _do_push(self, session: VdcSession) -> None:
-        """Send the ``VDC_SEND_PUSH_NOTIFICATION`` notification.
-
-        This is the low-level push that always sends, updating
-        internal tracking state (last push time, last value key,
-        alive timer reschedule).
-        """
         state_dict = self.get_state_properties()
 
         push_tree: Dict[str, Any] = {
@@ -643,8 +554,6 @@ class BinaryInput:
 
         try:
             await session.send_notification(msg)
-            self._last_push_time = time.monotonic()
-            self._last_pushed_state = self._current_state_key()
             logger.debug(
                 "BinaryInput[%d] '%s': pushed state %s for vdSD %s",
                 self._ds_index, self._name, state_dict,
@@ -656,106 +565,29 @@ class BinaryInput:
                 self._ds_index, self._name, exc,
             )
 
-        # (Re-)schedule the alive timer after every push attempt.
-        self._reschedule_alive_timer()
-
-    # ---- deferred push (minPushInterval rate limiting) ---------------
-
-    def _schedule_deferred_push(
-        self, session: VdcSession, delay: float
-    ) -> None:
-        """Schedule a push to fire after *delay* seconds.
-
-        Replaces any previously scheduled deferred push.
-        """
-        self._cancel_deferred_push()
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self._deferred_push_handle = loop.call_later(
-            delay,
-            self._on_deferred_push_fired,
-            session,
-        )
-
-    def _cancel_deferred_push(self) -> None:
-        """Cancel any pending deferred push."""
-        if self._deferred_push_handle is not None:
-            self._deferred_push_handle.cancel()
-            self._deferred_push_handle = None
-
-    def _on_deferred_push_fired(
-        self, session: VdcSession
-    ) -> None:
-        """Callback for :meth:`_schedule_deferred_push`."""
-        self._deferred_push_handle = None
-        if self._vdsd.is_announced:
-            asyncio.ensure_future(self._do_push(session))
-
-    # ---- alive timer (periodic heartbeat push) -----------------------
+    # ---- session management ------------------------------------------
 
     def start_alive_timer(self, session: VdcSession) -> None:
-        """Begin periodic alive re-pushes.
+        """Store the session for push fallback.
 
-        Called when the vdSD is announced.  Stores *session* so the
-        alive timer can push state autonomously.
+        Called when the vdSD is announced.  Stores *session* so that
+        :meth:`update_value` can push without an explicit session
+        argument.
 
-        If :attr:`alive_sign_interval` is ``0`` the timer is not
-        started (but the session is still stored so that
-        ``update_value()`` can push without an explicit session).
+        .. note::
+
+            The method name is kept for interface compatibility with
+            :class:`~pyDSvDCAPI.sensor_input.SensorInput` and
+            :class:`~pyDSvDCAPI.button_input.ButtonInput`.
         """
         self._session = session
-        self._reschedule_alive_timer()
 
     def stop_alive_timer(self) -> None:
-        """Stop periodic alive re-pushes and cancel pending pushes.
+        """Clear the stored session.
 
         Called when the vdSD vanishes or the session disconnects.
         """
-        self._cancel_alive_timer()
-        self._cancel_deferred_push()
         self._session = None
-
-    def _reschedule_alive_timer(self) -> None:
-        """(Re-)schedule the alive timer.
-
-        After each push the timer is reset so it fires only when
-        no other push occurs within :attr:`alive_sign_interval`
-        seconds.
-        """
-        self._cancel_alive_timer()
-        interval = self._alive_sign_interval
-        if interval <= 0 or self._session is None:
-            return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            return
-        self._alive_timer_handle = loop.call_later(
-            interval,
-            self._on_alive_timer_fired,
-        )
-
-    def _cancel_alive_timer(self) -> None:
-        """Cancel the alive timer if running."""
-        if self._alive_timer_handle is not None:
-            self._alive_timer_handle.cancel()
-            self._alive_timer_handle = None
-
-    def _on_alive_timer_fired(self) -> None:
-        """Callback: alive interval elapsed without a push."""
-        self._alive_timer_handle = None
-        session = self._session
-        if session is not None and self._vdsd.is_announced:
-            logger.debug(
-                "BinaryInput[%d] '%s': alive timer fired — "
-                "re-pushing state",
-                self._ds_index, self._name,
-            )
-            asyncio.ensure_future(
-                self._push_state(session, force=True)
-            )
 
     # ---- auto-save ---------------------------------------------------
 

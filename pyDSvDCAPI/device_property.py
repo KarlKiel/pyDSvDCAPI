@@ -57,12 +57,14 @@ import logging
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
@@ -135,6 +137,8 @@ class DeviceProperty:
         "_default",
         "_description",
         "_value",
+        "_uplink_converter_code",
+        "_uplink_converter_fn",
     )
 
     def __init__(
@@ -167,6 +171,10 @@ class DeviceProperty:
         self._description = description
         # Current property value (persisted).
         self._value: Optional[Union[float, str]] = None
+
+        # ---- value converter (optional, persisted) -------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
 
     # ---- read-only accessors -----------------------------------------
 
@@ -265,6 +273,41 @@ class DeviceProperty:
     @description.setter
     def description(self, value: Optional[str]) -> None:
         self._description = value
+
+    # ---- converter management ---------------------------------------
+
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        Applied in :meth:`update_value` before the value is
+        type-converted and stored.  The snippet manipulates ``value``
+        (the raw incoming value).  The library appends ``return value``
+        automatically.
+
+        Pass ``None`` to remove a previously set converter.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Example
+        -------
+        ::
+
+            prop.set_uplink_converter("value = round(float(value), 2)")
+        """
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
+
+    @property
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
 
     # ---- volatile value accessor -------------------------------------
 
@@ -367,6 +410,8 @@ class DeviceProperty:
         # Current value is also persisted.
         if self._value is not None:
             node["value"] = self._value
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
         return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
@@ -397,6 +442,12 @@ class DeviceProperty:
         # Restore persisted value.
         if "value" in state:
             self._value = state["value"]
+        # Converter
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
 
     # ---- push to vdSM ------------------------------------------------
 
@@ -428,6 +479,12 @@ class DeviceProperty:
         # Per §4.6.4 all property values are strings on the wire.
         # We keep numeric values as float internally for convenience
         # (min/max checks, arithmetic) but serialise as str.
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"DeviceProperty[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         if self._type == PROPERTY_TYPE_NUMERIC:
             self._value = float(value)
         elif self._type == PROPERTY_TYPE_ENUMERATION:

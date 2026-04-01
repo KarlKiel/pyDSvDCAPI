@@ -82,11 +82,13 @@ from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.enums import OutputChannelType
 
 if TYPE_CHECKING:
@@ -345,9 +347,90 @@ class OutputChannel:
         #: Monotonic timestamp of last confirmed hardware apply.
         self._last_update: Optional[float] = None
 
+        # ---- value converters (optional, persisted) ------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
+        self._downlink_converter_code: Optional[str] = None
+        self._downlink_converter_fn: Optional[Callable[[Any], Any]] = None
+
+    # ==================================================================
+    # Converter management
+    # ==================================================================
+
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        Applied when the device confirms a channel value via
+        :meth:`update_value` (device → dS direction).
+
+        The snippet manipulates ``value`` (the raw device-side float).
+        The library appends ``return value`` automatically.
+
+        Pass ``None`` to remove a previously set converter.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Example
+        -------
+        ::
+
+            ch.set_uplink_converter("value = value * 100.0 / 255.0")
+        """
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
+
+    @property
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
+
+    def set_downlink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the downlink value converter.
+
+        Applied when the vdSM sets a channel value via
+        :meth:`set_value_from_vdsm` (dS → device direction).
+
+        The snippet manipulates ``value`` (the dS-side float, e.g.
+        0–100 % brightness).  The library appends ``return value``
+        automatically.
+
+        Pass ``None`` to remove a previously set converter.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Example
+        -------
+        ::
+
+            ch.set_downlink_converter(
+                "value = int(round(value * 255.0 / 100.0))"
+            )
+        """
+        if code is None:
+            self._downlink_converter_code = None
+            self._downlink_converter_fn = None
+        else:
+            self._downlink_converter_fn = compile_converter(code)
+            self._downlink_converter_code = code
+
+    @property
+    def downlink_converter_code(self) -> Optional[str]:
+        """The stored downlink converter snippet, or ``None``."""
+        return self._downlink_converter_code
+
     # ==================================================================
     # Read-only description accessors
-    # ==================================================================
+    # ==================================================================================================================================
 
     @property
     def output(self) -> Output:
@@ -424,6 +507,12 @@ class OutputChannel:
         value:
             New channel value in the channel's native unit/range.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"OutputChannel[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._value = self._clamp(value)
         self._last_update = time.monotonic()
         logger.debug(
@@ -450,6 +539,12 @@ class OutputChannel:
         by :meth:`Output.apply_pending_channels` when ``apply_now``
         is ``True``.
         """
+        value = apply_converter(
+            self._downlink_converter_fn,
+            value,
+            component_id=f"OutputChannel[{self._ds_index}] '{self._name}'",
+            direction="downlink",
+        )
         self._value = self._clamp(value)
         # Age = NULL until the device confirms the value.
         self._last_update = None
@@ -516,7 +611,7 @@ class OutputChannel:
         Only description metadata is persisted.  Channel value/age
         are volatile.
         """
-        return {
+        node: Dict[str, Any] = {
             "channelType": int(self._channel_type),
             "dsIndex": self._ds_index,
             "name": self._name,
@@ -524,6 +619,11 @@ class OutputChannel:
             "max": self._max_value,
             "resolution": self._resolution,
         }
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
+        if self._downlink_converter_code is not None:
+            node["downlinkConverter"] = self._downlink_converter_code
+        return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
         """Restore from a persisted property tree dict.
@@ -554,6 +654,17 @@ class OutputChannel:
             self._max_value = float(state["max"])
         if "resolution" in state:
             self._resolution = float(state["resolution"])
+        # Converters
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        if "downlinkConverter" in state:
+            self.set_downlink_converter(state["downlinkConverter"])
+        else:
+            self._downlink_converter_code = None
+            self._downlink_converter_fn = None
 
     # ==================================================================
     # Helpers

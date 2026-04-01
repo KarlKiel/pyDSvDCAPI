@@ -78,12 +78,14 @@ import time
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.enums import InputError, SensorType, SensorUsage
 from pyDSvDCAPI.property_handling import dict_to_elements
 
@@ -191,6 +193,59 @@ class SensorInput:
         self._last_pushed_state: Optional[tuple] = None
         self._alive_timer_handle: Optional[asyncio.TimerHandle] = None
         self._deferred_push_handle: Optional[asyncio.TimerHandle] = None
+
+        # ---- value converter (optional, persisted) -------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
+
+    # ---- converter management ---------------------------------------
+
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        The converter snippet is a block of Python code that
+        manipulates the pre-bound variable ``value`` (the raw incoming
+        sensor reading).  The library appends ``return value``
+        automatically — no return statement is needed.
+
+        Pass ``None`` to remove a previously set converter.
+
+        Parameters
+        ----------
+        code:
+            Python snippet string, or ``None`` to clear.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Examples
+        --------
+        Simple scaling::
+
+            si.set_uplink_converter("value = (value - 32.0) * 5.0 / 9.0")
+
+        Multi-line::
+
+            si.set_uplink_converter(\"\"\"
+            if value is None:
+                value = 0.0
+            else:
+                value = round(float(value) / 10.0, 1)
+            \"\"\")
+        """
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
+
+    @property
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
 
     # ---- read-only accessors -----------------------------------------
 
@@ -351,6 +406,12 @@ class SensorInput:
         context_msg:
             Optional text context message to include in the push.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"SensorInput[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._value = value
         self._last_update = time.monotonic()
         if context_id is not None:
@@ -474,7 +535,7 @@ class SensorInput:
         Only description and settings properties are included (state
         is volatile and not persisted).
         """
-        return {
+        node: Dict[str, Any] = {
             "dsIndex": self._ds_index,
             "name": self._name,
             "sensorType": int(self._sensor_type),
@@ -489,6 +550,9 @@ class SensorInput:
             "minPushInterval": self._min_push_interval,
             "changesOnlyInterval": self._changes_only_interval,
         }
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
+        return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
         """Restore from a persisted property tree dict.
@@ -527,6 +591,12 @@ class SensorInput:
             self._changes_only_interval = float(
                 state["changesOnlyInterval"]
             )
+        # Converter
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
 
     # ---- push notification -------------------------------------------
 

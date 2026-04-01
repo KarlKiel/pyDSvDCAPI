@@ -53,12 +53,14 @@ import time
 from typing import (
     TYPE_CHECKING,
     Any,
+    Callable,
     Dict,
     Optional,
     Union,
 )
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
+from pyDSvDCAPI.conversion import apply_converter, compile_converter
 from pyDSvDCAPI.enums import BinaryInputType, BinaryInputUsage, InputError
 from pyDSvDCAPI.property_handling import dict_to_elements
 
@@ -151,6 +153,10 @@ class BinaryInput:
         # ---- session (stored by start_alive_timer for push fallback) -
         self._session: Optional[VdcSession] = None
 
+        # ---- value converter (optional, persisted) -------------------
+        self._uplink_converter_code: Optional[str] = None
+        self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
+
     # ---- read-only accessors -----------------------------------------
 
     @property
@@ -214,6 +220,56 @@ class BinaryInput:
         self._sensor_function = BinaryInputType(int(value))
         self._schedule_auto_save()
 
+    # ---- converter management ---------------------------------------
+
+    def set_uplink_converter(self, code: Optional[str]) -> None:
+        """Set or clear the uplink value converter.
+
+        The converter snippet is a block of Python code that
+        manipulates the pre-bound variable ``value`` (the raw incoming
+        binary input value).  The library appends ``return value``
+        automatically — no return statement is needed.  The same
+        converter is applied to both boolean updates
+        (:meth:`update_value`) and integer extended-value updates
+        (:meth:`update_extended_value`).
+
+        Pass ``None`` to remove a previously set converter.
+
+        Parameters
+        ----------
+        code:
+            Python snippet string, or ``None`` to clear.
+
+        Raises
+        ------
+        SyntaxError
+            If the snippet cannot be compiled.
+
+        Examples
+        --------
+        Invert a boolean input::
+
+            bi.set_uplink_converter("value = not value")
+
+        Map integer extended value::
+
+            bi.set_uplink_converter(\"\"\"
+            if isinstance(value, int):
+                value = value > 0
+            \"\"\")
+        """
+        if code is None:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
+        else:
+            self._uplink_converter_fn = compile_converter(code)
+            self._uplink_converter_code = code
+
+    @property
+    def uplink_converter_code(self) -> Optional[str]:
+        """The stored uplink converter snippet, or ``None``."""
+        return self._uplink_converter_code
+
     # ---- state accessors (volatile) ----------------------------------
 
     @property
@@ -263,6 +319,12 @@ class BinaryInput:
             ``None`` or the vdSD is not announced, the value is stored
             locally but no push is sent.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"BinaryInput[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._value = value
         self._extended_value = None  # bool takes precedence
         self._last_update = time.monotonic()
@@ -287,6 +349,12 @@ class BinaryInput:
         session:
             Active session to send the push notification on.
         """
+        value = apply_converter(
+            self._uplink_converter_fn,
+            value,
+            component_id=f"BinaryInput[{self._ds_index}] '{self._name}'",
+            direction="uplink",
+        )
         self._extended_value = value
         self._value = None  # extended takes precedence
         self._last_update = time.monotonic()
@@ -397,7 +465,7 @@ class BinaryInput:
         Only description and settings properties are included (state
         is volatile and not persisted).
         """
-        return {
+        node: Dict[str, Any] = {
             "dsIndex": self._ds_index,
             "name": self._name,
             "inputType": self._input_type,
@@ -408,6 +476,9 @@ class BinaryInput:
             "group": self._group,
             "sensorFunction": int(self._sensor_function),
         }
+        if self._uplink_converter_code is not None:
+            node["uplinkConverter"] = self._uplink_converter_code
+        return node
 
     def _apply_state(self, state: Dict[str, Any]) -> None:
         """Restore from a persisted property tree dict.
@@ -438,6 +509,12 @@ class BinaryInput:
             self._sensor_function = BinaryInputType(
                 int(state["sensorFunction"])
             )
+        # Converter
+        if "uplinkConverter" in state:
+            self.set_uplink_converter(state["uplinkConverter"])
+        else:
+            self._uplink_converter_code = None
+            self._uplink_converter_fn = None
 
     # ---- push notification -------------------------------------------
 

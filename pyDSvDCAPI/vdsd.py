@@ -1929,6 +1929,10 @@ class Device:
         # Ordered list preserving insertion order.
         self._vdsds: Dict[int, Vdsd] = {}  # keyed by subdevice_index
         self._announced: bool = False
+        # Required-callbacks manifest set by DeviceTemplate.instantiate().
+        # None means no template was used; an empty dict means all callbacks
+        # were already satisfied at template instantiation time.
+        self._required_callbacks: Optional[Dict[str, None]] = None
 
     # ---- accessors ---------------------------------------------------
 
@@ -2025,6 +2029,41 @@ class Device:
 
     # ---- announcement ------------------------------------------------
 
+    def _check_required_callbacks(self) -> List[str]:
+        """Return a list of required-callback paths that are still unset.
+
+        Only called when ``self._required_callbacks`` is not ``None``
+        (i.e. the device was created from a template).
+        """
+        vdsds_by_index = {
+            idx: vdsd for idx, vdsd in enumerate(self._vdsds.values())
+        }
+        missing: List[str] = []
+        for path in (self._required_callbacks or {}):
+            # Parse path: "vdsds[N].attr" or "vdsds[N].output.attr"
+            if path.startswith("vdsds["):
+                # Extract index and remainder.
+                bracket_end = path.index("]")
+                idx = int(path[6:bracket_end])
+                remainder = path[bracket_end + 2:]  # skip "]."
+                vdsd = vdsds_by_index.get(idx)
+                if vdsd is None:
+                    missing.append(path)
+                    continue
+                if "." in remainder:
+                    # e.g. "output.on_channel_applied"
+                    component_name, attr = remainder.split(".", 1)
+                    component = getattr(vdsd, f"_{component_name}", None)
+                    if component is None:
+                        missing.append(path)
+                        continue
+                    if getattr(component, attr, None) is None:
+                        missing.append(path)
+                else:
+                    if getattr(vdsd, remainder, None) is None:
+                        missing.append(path)
+        return missing
+
     async def announce(self, session: VdcSession) -> int:
         """Announce all contained vdSDs to the vdSM.
 
@@ -2052,6 +2091,14 @@ class Device:
                 "Device is already announced.  "
                 "Use device.update() to re-announce after changes."
             )
+
+        # If this device was created from a template, verify that all
+        # required callbacks have been set before we send any protobuf.
+        if self._required_callbacks is not None:
+            missing = self._check_required_callbacks()
+            if missing:
+                from pyDSvDCAPI.device_template import AnnouncementNotReadyError
+                raise AnnouncementNotReadyError(missing)
 
         count = 0
         for vdsd in self._vdsds.values():
@@ -2150,6 +2197,21 @@ class Device:
         self._announced = False
 
     # ---- persistence -------------------------------------------------
+
+    def get_template_tree(self) -> Dict[str, Any]:
+        """Return the Device data stripped of instance-specific fields,
+        suitable for saving as a device template.
+
+        Strips ``baseDsUID`` at the Device level, and ``dSUID``, ``name``,
+        ``zoneID`` from each vdSD.  All structural and semantic fields
+        (model features, components, converters, etc.) are retained.
+
+        The returned tree can be passed directly to
+        :func:`~pyDSvDCAPI.device_template.strip_instance_fields` (which
+        this method calls internally).
+        """
+        from pyDSvDCAPI.device_template import strip_instance_fields
+        return strip_instance_fields(self.get_property_tree())
 
     def get_property_tree(self) -> Dict[str, Any]:
         """Return the Device data for inclusion in the Vdc's persisted

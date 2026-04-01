@@ -152,3 +152,9 @@ from pyDSvDCAPI.property_handling import (  # noqa: F401
     expand_setproperty_wildcards,
     match_query,
 )
+
+from pyDSvDCAPI.device_template import (  # noqa: F401
+    AnnouncementNotReadyError,
+    DeviceTemplate,
+    TemplateNotConfiguredError,
+)

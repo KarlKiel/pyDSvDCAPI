@@ -46,7 +46,8 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Union
 
 from pyDSvDCAPI import genericVDC_pb2 as pb
 from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
@@ -219,6 +220,7 @@ class Vdc:
         device_class_version: Optional[str] = None,
         capabilities: Optional[VdcCapabilities] = None,
         zone_id: int = 0,
+        template_path: Optional[Union[str, Path]] = None,
     ) -> None:
         # Auto-save must be disabled during construction.
         self._auto_save_enabled: bool = False
@@ -266,6 +268,11 @@ class Vdc:
         # --- runtime state --------------------------------------------
         self._active: bool = True
         self._announced: bool = False
+
+        # --- template path --------------------------------------------
+        self._template_path: Optional[Path] = (
+            Path(template_path) if template_path is not None else None
+        )
 
         # Enable auto-save now that construction is complete.
         self._auto_save_enabled = True
@@ -422,6 +429,157 @@ class Vdc:
     def _schedule_auto_save(self) -> None:
         """Delegate auto-save scheduling to the owning host."""
         self._host._schedule_auto_save()
+
+    # ---- device templates --------------------------------------------
+
+    def save_template(
+        self,
+        device: "Device",
+        *,
+        template_type: str,
+        integration: str,
+        name: str,
+        description: Optional[str] = None,
+    ) -> Path:
+        """Save a device template to disk.
+
+        Parameters
+        ----------
+        device:
+            The :class:`~pyDSvDCAPI.vdsd.Device` to use as the source.
+        template_type:
+            Either ``"generic"`` or ``"model"``.  Controls the
+            sub-directory (``generic_templates/`` or
+            ``model_templates/``).
+        integration:
+            Integration identifier used as a second-level sub-folder
+            (e.g. ``"x-acme-light"``).
+        name:
+            File stem for the YAML template file (e.g.
+            ``"dimmable-light"``).
+        description:
+            Optional human-readable description stored in the template.
+
+        Returns
+        -------
+        pathlib.Path
+            Absolute path of the saved YAML file.
+
+        Raises
+        ------
+        RuntimeError
+            If no ``template_path`` was set on this vDC.
+        """
+        if self._template_path is None:
+            raise RuntimeError(
+                "No template_path configured on this Vdc.  "
+                "Pass template_path=... to the Vdc constructor."
+            )
+
+        import yaml
+        from pyDSvDCAPI.device_template import (
+            DeviceTemplate,
+            build_required_callbacks,
+            build_required_fields,
+        )
+
+        vdsd_trees = [
+            vdsd.get_property_tree() for vdsd in device.vdsds.values()
+        ]
+        stripped_tree = device.get_template_tree()
+
+        template = DeviceTemplate(
+            template_type=template_type,
+            integration=integration,
+            name=name,
+            tree=stripped_tree,
+            required_fields=build_required_fields(vdsd_trees),
+            required_callbacks=build_required_callbacks(vdsd_trees),
+            description=description,
+        )
+
+        folder = (
+            self._template_path
+            / f"{template_type}_templates"
+            / integration
+        )
+        folder.mkdir(parents=True, exist_ok=True)
+        file_path = folder / f"{name}.yaml"
+
+        with file_path.open("w", encoding="utf-8") as fh:
+            yaml.safe_dump(
+                template.to_dict(),
+                fh,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+
+        logger.info(
+            "Saved %s template '%s/%s' to %s",
+            template_type, integration, name, file_path,
+        )
+        return file_path
+
+    def load_template(
+        self,
+        template_type: str,
+        integration: str,
+        name: str,
+    ) -> "DeviceTemplate":
+        """Load a device template from disk.
+
+        Parameters
+        ----------
+        template_type:
+            Either ``"generic"`` or ``"model"``.
+        integration:
+            Integration identifier (sub-folder).
+        name:
+            File stem (without ``.yaml`` extension).
+
+        Returns
+        -------
+        DeviceTemplate
+            A :class:`~pyDSvDCAPI.device_template.DeviceTemplate`
+            ready to configure and instantiate.
+
+        Raises
+        ------
+        RuntimeError
+            If no ``template_path`` was set on this vDC.
+        FileNotFoundError
+            If the template file does not exist.
+        """
+        if self._template_path is None:
+            raise RuntimeError(
+                "No template_path configured on this Vdc.  "
+                "Pass template_path=... to the Vdc constructor."
+            )
+
+        import yaml
+        from pyDSvDCAPI.device_template import DeviceTemplate
+
+        file_path = (
+            self._template_path
+            / f"{template_type}_templates"
+            / integration
+            / f"{name}.yaml"
+        )
+
+        with file_path.open("r", encoding="utf-8") as fh:
+            data = yaml.safe_load(fh)
+
+        template = DeviceTemplate.from_dict(data)
+        logger.info(
+            "Loaded %s template '%s/%s' from %s",
+            template_type, integration, name, file_path,
+        )
+        return template
+
+    @property
+    def template_path(self) -> Optional[Path]:
+        """The base directory for device templates (read-only)."""
+        return self._template_path
 
     # ---- common-property dict ----------------------------------------
 

@@ -6,8 +6,8 @@ from typing import Any, Dict
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.property_handling import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.property_handling import (
     build_get_property_response,
     dict_to_elements,
     elements_to_dict,
@@ -390,7 +390,7 @@ class TestVdcHostPropertyDispatch:
     """Tests for VdcHost._handle_get_property / _handle_set_property."""
 
     def _make_host(self):
-        from pyDSvDCAPI.vdc_host import VdcHost
+        from pydsvdcapi.vdc_host import VdcHost
         host = VdcHost(
             name="Test Host",
             mac="AA:BB:CC:DD:EE:FF",
@@ -416,7 +416,7 @@ class TestVdcHostPropertyDispatch:
         assert props[0].value.v_string == "Test Host"
 
     def test_get_property_vdc(self):
-        from pyDSvDCAPI.vdc import Vdc
+        from pydsvdcapi.vdc import Vdc
         host = self._make_host()
         vdc = Vdc(
             host=host,
@@ -464,7 +464,7 @@ class TestVdcHostPropertyDispatch:
         assert host.name == "New Host Name"
 
     def test_set_property_vdc_zone_id(self):
-        from pyDSvDCAPI.vdc import Vdc
+        from pydsvdcapi.vdc import Vdc
         host = self._make_host()
         vdc = Vdc(
             host=host,

@@ -8,7 +8,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from pyDSvDCAPI.vdc_host import AUTO_SAVE_DELAY, VdcHost
+from pydsvdcapi.vdc_host import AUTO_SAVE_DELAY, VdcHost
 
 TEST_MAC = "AA:BB:CC:DD:EE:FF"
 

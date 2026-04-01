@@ -5,9 +5,9 @@ Mock native device classes for real-world VDC demo.
 import asyncio
 import random
 import logging
-from pyDSvDCAPI.enums import *
-from pyDSvDCAPI.vdsd import Vdsd
-from pyDSvDCAPI.dsuid import DsUid
+from pydsvdcapi.enums import *
+from pydsvdcapi.vdsd import Vdsd
+from pydsvdcapi.dsuid import DsUid
 
 logging.basicConfig(level=logging.INFO)
 

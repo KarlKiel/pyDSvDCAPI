@@ -2,7 +2,7 @@
 
 A :class:`Output` models the single output of a virtual device.  Each
 vdSD may have **at most one** output (enforced by the owning
-:class:`~pyDSvDCAPI.vdsd.Vdsd`).  If a physical device has multiple
+:class:`~pydsvdcapi.vdsd.Vdsd`).  If a physical device has multiple
 independent outputs, the vDC must represent it as multiple virtual
 devices with separate dSUIDs (see vDC API §4.1.3).
 
@@ -29,7 +29,7 @@ are auto-created on construction:
 * **POSITIONAL / BIPOLAR / INTERNALLY_CONTROLLED** → no auto-created
   channels; the integrator must add them via :meth:`add_channel`.
 
-See :mod:`pyDSvDCAPI.output_channel` for details on channel semantics,
+See :mod:`pydsvdcapi.output_channel` for details on channel semantics,
 bidirectional value flow, ``apply_now`` buffering, and push behaviour.
 
 State model
@@ -52,8 +52,8 @@ state (``localPriority``, ``error``) is transient.
 
 Usage::
 
-    from pyDSvDCAPI.output import Output
-    from pyDSvDCAPI.enums import OutputFunction, OutputMode, OutputUsage
+    from pydsvdcapi.output import Output
+    from pydsvdcapi.enums import OutputFunction, OutputMode, OutputUsage
 
     output = Output(
         vdsd=my_vdsd,
@@ -79,8 +79,8 @@ from typing import (
     Union,
 )
 
-import pyDSvDCAPI.genericVDC_pb2 as pb
-from pyDSvDCAPI.enums import (
+import pydsvdcapi.genericVDC_pb2 as pb
+from pydsvdcapi.enums import (
     HeatingSystemCapability,
     HeatingSystemType,
     OutputChannelType,
@@ -91,12 +91,12 @@ from pyDSvDCAPI.enums import (
     SceneEffect,
     SceneNumber,
 )
-from pyDSvDCAPI.output_channel import OutputChannel
-from pyDSvDCAPI.property_handling import dict_to_elements
+from pydsvdcapi.output_channel import OutputChannel
+from pydsvdcapi.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdsd import Vdsd
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdsd import Vdsd
 
 #: Type alias for the channel-applied callback.
 #: ``async def callback(output, channel_updates) -> None``
@@ -283,7 +283,7 @@ class Output:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd`.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd`.
     function:
         Functional type of the output (on/off, dimmer, positional, …).
     output_usage:

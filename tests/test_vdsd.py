@@ -10,13 +10,13 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import ColorGroup
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import ENTITY_TYPE_VDSD, Device, Vdsd
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import ENTITY_TYPE_VDSD, Device, Vdsd
 
 
 # ---------------------------------------------------------------------------

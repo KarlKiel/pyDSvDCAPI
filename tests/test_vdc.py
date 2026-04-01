@@ -11,12 +11,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import VdcConnection
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.session import SessionState, VdcSession
-from pyDSvDCAPI.vdc import ENTITY_TYPE_VDC, Vdc, VdcCapabilities
-from pyDSvDCAPI.vdc_host import VdcHost
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import VdcConnection
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.session import SessionState, VdcSession
+from pydsvdcapi.vdc import ENTITY_TYPE_VDC, Vdc, VdcCapabilities
+from pydsvdcapi.vdc_host import VdcHost
 
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ class TestVdcConstruction:
         vdc = Vdc(host=host, implementation_id="x-test-vdc")
         assert vdc.implementation_id == "x-test-vdc"
         assert vdc.name == "x-test-vdc"  # defaults to impl id
-        assert vdc.model == "pyDSvDCAPI vDC"
+        assert vdc.model == "pydsvdcapi vDC"
         assert vdc.entity_type == ENTITY_TYPE_VDC
         assert vdc.entity_type == "vDC"
         assert vdc.active is True

@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-from pyDSvDCAPI import (
+from pydsvdcapi import (
     ColorGroup,
     Device,
     DsUid,
@@ -22,15 +22,15 @@ from pyDSvDCAPI import (
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.device_state import DeviceState
-from pyDSvDCAPI.device_property import (
+from pydsvdcapi.device_state import DeviceState
+from pydsvdcapi.device_property import (
     PROPERTY_TYPE_NUMERIC,
     PROPERTY_TYPE_STRING,
     DeviceProperty,
 )
-from pyDSvDCAPI.device_event import DeviceEvent
+from pydsvdcapi.device_event import DeviceEvent
 
-STATE_FILE = Path("/tmp/pyDSvDCAPI_wire_debug_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_wire_debug_state.yaml")
 PORT = 8444
 CONNECT_TIMEOUT = 120
 
@@ -153,8 +153,8 @@ async def main():
             logger.info("OUR PROPS %s = %s", key, json.dumps(props[key], indent=2, default=str))
 
     # Also print the full protobuf response
-    from pyDSvDCAPI import genericVDC_pb2 as pb
-    from pyDSvDCAPI.property_handling import dict_to_elements
+    from pydsvdcapi import genericVDC_pb2 as pb
+    from pydsvdcapi.property_handling import dict_to_elements
     logger.info("=== FULL PROTOBUF WIRE FORMAT ===")
     for key in ["deviceStateDescriptions", "deviceStates",
                 "devicePropertyDescriptions", "deviceProperties",

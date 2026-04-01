@@ -1,6 +1,6 @@
 """vDC session — protocol state machine for a vdSM ↔ vDC host session.
 
-A :class:`VdcSession` wraps a :class:`~pyDSvDCAPI.connection.VdcConnection`
+A :class:`VdcSession` wraps a :class:`~pydsvdcapi.connection.VdcConnection`
 and implements the session lifecycle defined by the vDC API:
 
 1. **Initialisation** — The vdSM sends a ``hello`` request; the vDC host
@@ -29,7 +29,7 @@ expect a ``GENERIC_RESPONSE`` (e.g. ``announcedevice``,
 ``announcevdc``, ``vanish``).  Use :meth:`VdcSession.send_notification`
 for fire-and-forget messages (e.g. ``pushProperty``, ``pong``).
 
-Usage (typically managed by :class:`~pyDSvDCAPI.vdc_host.VdcHost`)::
+Usage (typically managed by :class:`~pydsvdcapi.vdc_host.VdcHost`)::
 
     session = VdcSession(
         connection=conn,
@@ -46,8 +46,8 @@ import enum
 import logging
 from typing import Any, Awaitable, Callable, Optional
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import VdcConnection
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import VdcConnection
 
 logger = logging.getLogger(__name__)
 

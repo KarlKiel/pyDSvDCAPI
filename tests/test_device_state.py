@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.device_state import DeviceState
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import ColorGroup, OutputFunction, OutputUsage
-from pyDSvDCAPI.output import Output
-from pyDSvDCAPI.property_handling import elements_to_dict
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.device_state import DeviceState
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import ColorGroup, OutputFunction, OutputUsage
+from pydsvdcapi.output import Output
+from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------

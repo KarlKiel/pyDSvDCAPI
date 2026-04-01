@@ -30,8 +30,8 @@ state is transient by definition.
 
 Usage::
 
-    from pyDSvDCAPI.binary_input import BinaryInput
-    from pyDSvDCAPI.enums import BinaryInputType, BinaryInputUsage
+    from pydsvdcapi.binary_input import BinaryInput
+    from pydsvdcapi.enums import BinaryInputType, BinaryInputUsage
 
     bi = BinaryInput(
         vdsd=my_vdsd,
@@ -59,14 +59,14 @@ from typing import (
     Union,
 )
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.conversion import apply_converter, compile_converter
-from pyDSvDCAPI.enums import BinaryInputType, BinaryInputUsage, InputError
-from pyDSvDCAPI.property_handling import dict_to_elements
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.conversion import apply_converter, compile_converter
+from pydsvdcapi.enums import BinaryInputType, BinaryInputUsage, InputError
+from pydsvdcapi.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdsd import Vdsd
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdsd import Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -90,13 +90,13 @@ class BinaryInput:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd`.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd`.
     ds_index:
         Zero-based index among **all** binary inputs of this device.
         Must be unique within the device.
     sensor_function:
         The hardwired / configured sensor function (see
-        :class:`~pyDSvDCAPI.enums.BinaryInputType`).
+        :class:`~pydsvdcapi.enums.BinaryInputType`).
     input_type:
         ``0`` = poll-only, ``1`` = detects changes (default).
     input_usage:
@@ -577,8 +577,8 @@ class BinaryInput:
         .. note::
 
             The method name is kept for interface compatibility with
-            :class:`~pyDSvDCAPI.sensor_input.SensorInput` and
-            :class:`~pyDSvDCAPI.button_input.ButtonInput`.
+            :class:`~pydsvdcapi.sensor_input.SensorInput` and
+            :class:`~pydsvdcapi.button_input.ButtonInput`.
         """
         self._session = session
 

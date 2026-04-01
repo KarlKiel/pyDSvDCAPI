@@ -5,8 +5,8 @@ import struct
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.connection import MAX_MESSAGE_LENGTH, VdcConnection
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.connection import MAX_MESSAGE_LENGTH, VdcConnection
 
 
 # ---------------------------------------------------------------------------

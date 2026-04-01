@@ -9,20 +9,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import (
     ColorGroup,
     InputError,
     SensorType,
     SensorUsage,
 )
-from pyDSvDCAPI.property_handling import elements_to_dict
-from pyDSvDCAPI.sensor_input import SensorInput
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.sensor_input import SensorInput
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------

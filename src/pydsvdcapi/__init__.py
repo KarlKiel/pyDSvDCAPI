@@ -1,8 +1,8 @@
-"""pyDSvDCAPI - Python library for the DSvDC API."""
+"""pydsvdcapi - Python library for the DSvDC API."""
 
 __version__ = "0.1.0"
 
-from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
+from pydsvdcapi.enums import (  # noqa: F401 – re-export for convenience
     ActionMode,
     AirFlowDirection,
     ApartmentScene,
@@ -50,21 +50,21 @@ from pyDSvDCAPI.enums import (  # noqa: F401 – re-export for convenience
     ZoneTemperatureMode,
 )
 
-from pyDSvDCAPI.dsuid import (  # noqa: F401
+from pydsvdcapi.dsuid import (  # noqa: F401
     DSUID_BYTES,
     DsUid,
     DsUidNamespace,
     DsUidType,
 )
 
-from pyDSvDCAPI.connection import (  # noqa: F401
+from pydsvdcapi.connection import (  # noqa: F401
     MAX_MESSAGE_LENGTH,
     VdcConnection,
 )
 
-from pyDSvDCAPI.persistence import PropertyStore  # noqa: F401
+from pydsvdcapi.persistence import PropertyStore  # noqa: F401
 
-from pyDSvDCAPI.session import (  # noqa: F401
+from pydsvdcapi.session import (  # noqa: F401
     SUPPORTED_API_VERSION,
     HelloCallback,
     MessageCallback,
@@ -72,7 +72,7 @@ from pyDSvDCAPI.session import (  # noqa: F401
     VdcSession,
 )
 
-from pyDSvDCAPI.vdc_host import (  # noqa: F401
+from pydsvdcapi.vdc_host import (  # noqa: F401
     AUTO_SAVE_DELAY,
     AuthenticateCallback,
     DEFAULT_VDC_PORT,
@@ -84,13 +84,13 @@ from pyDSvDCAPI.vdc_host import (  # noqa: F401
     VdcHost,
 )
 
-from pyDSvDCAPI.vdc import (  # noqa: F401
+from pydsvdcapi.vdc import (  # noqa: F401
     ENTITY_TYPE_VDC,
     Vdc,
     VdcCapabilities,
 )
 
-from pyDSvDCAPI.vdsd import (  # noqa: F401
+from pydsvdcapi.vdsd import (  # noqa: F401
     ControlValueCallback,
     ENTITY_TYPE_VDSD,
     Device,
@@ -99,7 +99,7 @@ from pyDSvDCAPI.vdsd import (  # noqa: F401
     Vdsd,
 )
 
-from pyDSvDCAPI.actions import (  # noqa: F401
+from pydsvdcapi.actions import (  # noqa: F401
     ActionParameter,
     CustomAction,
     DeviceActionDescription,
@@ -107,9 +107,9 @@ from pyDSvDCAPI.actions import (  # noqa: F401
     StandardAction,
 )
 
-from pyDSvDCAPI.binary_input import BinaryInput  # noqa: F401
+from pydsvdcapi.binary_input import BinaryInput  # noqa: F401
 
-from pyDSvDCAPI.button_input import (  # noqa: F401
+from pydsvdcapi.button_input import (  # noqa: F401
     BUTTON_TYPE_ELEMENTS,
     ButtonInput,
     ClickDetector,
@@ -117,13 +117,13 @@ from pyDSvDCAPI.button_input import (  # noqa: F401
     get_required_elements,
 )
 
-from pyDSvDCAPI.sensor_input import SensorInput  # noqa: F401
+from pydsvdcapi.sensor_input import SensorInput  # noqa: F401
 
-from pyDSvDCAPI.device_event import DeviceEvent  # noqa: F401
+from pydsvdcapi.device_event import DeviceEvent  # noqa: F401
 
-from pyDSvDCAPI.device_state import DeviceState  # noqa: F401
+from pydsvdcapi.device_state import DeviceState  # noqa: F401
 
-from pyDSvDCAPI.device_property import (  # noqa: F401
+from pydsvdcapi.device_property import (  # noqa: F401
     PROPERTY_TYPE_ENUMERATION,
     PROPERTY_TYPE_NUMERIC,
     PROPERTY_TYPE_STRING,
@@ -131,20 +131,20 @@ from pyDSvDCAPI.device_property import (  # noqa: F401
     DeviceProperty,
 )
 
-from pyDSvDCAPI.output import (  # noqa: F401
+from pydsvdcapi.output import (  # noqa: F401
     DimChannelCallback,
     FUNCTION_CHANNELS,
     Output,
 )
 
-from pyDSvDCAPI.output_channel import (  # noqa: F401
+from pydsvdcapi.output_channel import (  # noqa: F401
     CHANNEL_SPECS,
     ChannelSpec,
     OutputChannel,
     get_channel_spec,
 )
 
-from pyDSvDCAPI.property_handling import (  # noqa: F401
+from pydsvdcapi.property_handling import (  # noqa: F401
     NO_VALUE,
     build_get_property_response,
     dict_to_elements,
@@ -153,7 +153,7 @@ from pyDSvDCAPI.property_handling import (  # noqa: F401
     match_query,
 )
 
-from pyDSvDCAPI.device_template import (  # noqa: F401
+from pydsvdcapi.device_template import (  # noqa: F401
     AnnouncementNotReadyError,
     DeviceTemplate,
     TemplateNotConfiguredError,

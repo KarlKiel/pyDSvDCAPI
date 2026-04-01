@@ -38,7 +38,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
+from pydsvdcapi import genericVDC_pb2 as pb
 
 logger = logging.getLogger(__name__)
 

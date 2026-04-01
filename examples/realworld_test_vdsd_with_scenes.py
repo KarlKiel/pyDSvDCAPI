@@ -65,7 +65,7 @@ import sys
 import time
 from pathlib import Path
 
-from pyDSvDCAPI import (
+from pydsvdcapi import (
     ColorGroup,
     Device,
     DeviceEvent,
@@ -87,24 +87,24 @@ from pyDSvDCAPI import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-STATE_FILE = Path("/tmp/pyDSvDCAPI_scene_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_scene_demo_state.yaml")
 
 PORT = 8444
-MODEL_NAME = "pyDSvDCAPI Scene Demo"
+MODEL_NAME = "pydsvdcapi Scene Demo"
 HOST_NAME = "scene-demo-host"
-VENDOR = "pyDSvDCAPI"
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-scenes"
+VENDOR = "pydsvdcapi"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-scenes"
 VDC_NAME = "Scene Demo vDC"
-VDC_MODEL = "pyDSvDCAPI-scene-vdc"
+VDC_MODEL = "pydsvdcapi-scene-vdc"
 
 # Device 1: Light (Yellow group) — DIMMER → brightness channel.
 VDSD_LIGHT_NAME = "Demo Dimmable Light"
-VDSD_LIGHT_MODEL = "pyDSvDCAPI-scene-light"
+VDSD_LIGHT_MODEL = "pydsvdcapi-scene-light"
 VDSD_LIGHT_GROUP = ColorGroup.YELLOW
 
 # Device 2: Shade (Grey group) — POSITIONAL → shade position + angle.
 VDSD_SHADE_NAME = "Demo Roller Shade"
-VDSD_SHADE_MODEL = "pyDSvDCAPI-scene-shade"
+VDSD_SHADE_MODEL = "pydsvdcapi-scene-shade"
 VDSD_SHADE_GROUP = ColorGroup.GREY
 
 #: How long to wait for the vdSM/dSS to connect (seconds).

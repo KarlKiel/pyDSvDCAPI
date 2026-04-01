@@ -78,8 +78,8 @@ state is transient by definition.
 
 Usage::
 
-    from pyDSvDCAPI.button_input import ButtonInput, ClickDetector
-    from pyDSvDCAPI.enums import (
+    from pydsvdcapi.button_input import ButtonInput, ClickDetector
+    from pydsvdcapi.enums import (
         ButtonType, ButtonElementID, ButtonClickType, ActionMode,
     )
 
@@ -121,8 +121,8 @@ from typing import (
     Union,
 )
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.enums import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.enums import (
     ActionMode,
     ButtonClickType,
     ButtonElementID,
@@ -131,11 +131,11 @@ from pyDSvDCAPI.enums import (
     ButtonType,
     InputError,
 )
-from pyDSvDCAPI.property_handling import dict_to_elements
+from pydsvdcapi.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdsd import Vdsd
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdsd import Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ class _ClickState(enum.Enum):
 
 class ClickDetector:
     """State machine that interprets raw button press/release events
-    into :class:`~pyDSvDCAPI.enums.ButtonClickType` values.
+    into :class:`~pydsvdcapi.enums.ButtonClickType` values.
 
     When a click pattern is resolved the *on_click* callback is called
     with ``(click_type, value)`` where:
@@ -537,7 +537,7 @@ class ButtonInput:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd`.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd`.
     ds_index:
         Zero-based index among **all** button inputs of this device.
         Must be unique within the device.

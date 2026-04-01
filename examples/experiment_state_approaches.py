@@ -54,7 +54,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from pyDSvDCAPI import (
+from pydsvdcapi import (
     BinaryInput,
     BinaryInputType,
     BinaryInputUsage,
@@ -74,29 +74,29 @@ from pyDSvDCAPI import (
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.device_property import (
+from pydsvdcapi.device_property import (
     PROPERTY_TYPE_NUMERIC,
     PROPERTY_TYPE_STRING,
     DeviceProperty,
 )
-from pyDSvDCAPI.device_state import DeviceState
+from pydsvdcapi.device_state import DeviceState
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-STATE_FILE = Path("/tmp/pyDSvDCAPI_experiment_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_experiment_state.yaml")
 PORT = 8444
 DSS_HOST = "10.42.10.10"
 DSS_PORT = 8080
 APP_TOKEN = "23fa753a71fff5c73d75401e525db26a183abbb154d1da07021bee399329222f"
 
-MODEL_NAME = "pyDSvDCAPI State Experiment"
+MODEL_NAME = "pydsvdcapi State Experiment"
 HOST_NAME = "state-experiment-host"
-VENDOR = "pyDSvDCAPI"
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-experiment"
+VENDOR = "pydsvdcapi"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-experiment"
 VDC_NAME = "State Experiment vDC"
-VDC_MODEL = "pyDSvDCAPI-experiment-vdc"
+VDC_MODEL = "pydsvdcapi-experiment-vdc"
 
 CONNECT_TIMEOUT = 120
 # Extra wait after announcement for dSS to fully register devices.
@@ -868,7 +868,7 @@ async def main() -> None:
         print_results_table(results)
 
         # ---- Save raw results to file --------------------------------
-        results_file = Path("/tmp/pyDSvDCAPI_experiment_results.json")
+        results_file = Path("/tmp/pydsvdcapi_experiment_results.json")
         serializable = {}
         for label, r in results.items():
             serializable[label] = {

@@ -4,18 +4,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import ColorGroup
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import (
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import (
     DEFAULT_VDC_PORT,
     ENTITY_TYPE_VDC_HOST,
     VDC_SERVICE_TYPE,
     VdcHost,
 )
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ class TestConstruction:
 
     def test_default_model(self):
         host = VdcHost(mac=TEST_MAC)
-        assert host.model == "pyDSvDCAPI vDC host"
+        assert host.model == "pydsvdcapi vDC host"
 
     def test_custom_model(self):
         host = VdcHost(mac=TEST_MAC, model="Custom Model")
@@ -231,7 +231,7 @@ class TestAutoMac:
 class TestAnnouncement:
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_announce_registers_service(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()
@@ -254,7 +254,7 @@ class TestAnnouncement:
         await host.unannounce()
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_announce_twice_is_noop(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()
@@ -272,7 +272,7 @@ class TestAnnouncement:
         await host.unannounce()
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_unannounce(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()
@@ -295,7 +295,7 @@ class TestAnnouncement:
         assert not host.is_announced
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_service_contains_dsuid_txt(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()
@@ -313,7 +313,7 @@ class TestAnnouncement:
         await host.unannounce()
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_custom_port_in_announcement(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()
@@ -330,7 +330,7 @@ class TestAnnouncement:
         await host.unannounce()
 
     @pytest.mark.asyncio
-    @patch("pyDSvDCAPI.vdc_host.AsyncZeroconf")
+    @patch("pydsvdcapi.vdc_host.AsyncZeroconf")
     async def test_service_name_uses_host_name(self, MockAsyncZC):
         mock_zc = MagicMock()
         mock_zc.async_register_service = AsyncMock()

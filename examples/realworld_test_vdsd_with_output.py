@@ -48,7 +48,7 @@ import sys
 import time
 from pathlib import Path
 
-from pyDSvDCAPI import (
+from pydsvdcapi import (
     ColorGroup,
     Device,
     DsUid,
@@ -67,17 +67,17 @@ from pyDSvDCAPI import (
 # Configuration
 # ---------------------------------------------------------------------------
 
-STATE_FILE = Path("/tmp/pyDSvDCAPI_output_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_output_demo_state.yaml")
 
 PORT = 8444
-MODEL_NAME = "pyDSvDCAPI Output Demo"
+MODEL_NAME = "pydsvdcapi Output Demo"
 HOST_NAME = "output-demo-host"
-VENDOR = "pyDSvDCAPI"
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-output"
+VENDOR = "pydsvdcapi"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-output"
 VDC_NAME = "Output Demo vDC"
-VDC_MODEL = "pyDSvDCAPI-output-vdc"
+VDC_MODEL = "pydsvdcapi-output-vdc"
 VDSD_NAME = "RGBW LED Strip"
-VDSD_MODEL = "pyDSvDCAPI-output-vdsd"
+VDSD_MODEL = "pydsvdcapi-output-vdsd"
 VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light device
 
 #: How long to wait for the vdSM/dSS to connect (seconds).
@@ -148,8 +148,8 @@ async def on_message(msg) -> None:
     )
     # Most incoming messages expect a simple OK response.
     if msg.message_id:
-        from pyDSvDCAPI.genericVDC_pb2 import vdc_ResponseGetProperty
-        from pyDSvDCAPI import ResultCode
+        from pydsvdcapi.genericVDC_pb2 import vdc_ResponseGetProperty
+        from pydsvdcapi import ResultCode
         resp = vdc_ResponseGetProperty()
         resp.message_id = msg.message_id
         logger.debug(

@@ -32,7 +32,7 @@ Event occurrences are transient by definition.
 
 Usage::
 
-    from pyDSvDCAPI.device_event import DeviceEvent
+    from pydsvdcapi.device_event import DeviceEvent
 
     evt = DeviceEvent(
         vdsd=my_vdsd,
@@ -56,12 +56,12 @@ from typing import (
     Optional,
 )
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
-from pyDSvDCAPI.property_handling import dict_to_elements
+from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
-    from pyDSvDCAPI.session import VdcSession
-    from pyDSvDCAPI.vdsd import Vdsd
+    from pydsvdcapi.session import VdcSession
+    from pydsvdcapi.vdsd import Vdsd
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class DeviceEvent:
     Parameters
     ----------
     vdsd:
-        The owning :class:`~pyDSvDCAPI.vdsd.Vdsd` instance.
+        The owning :class:`~pydsvdcapi.vdsd.Vdsd` instance.
     ds_index:
         Numeric index of this event within the device
         (position in ``deviceEventDescriptions``).

@@ -79,7 +79,7 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from pyDSvDCAPI import (  # noqa: E402
+from pydsvdcapi import (  # noqa: E402
     ButtonInput,
     create_button_group,
     Device,
@@ -88,8 +88,8 @@ from pyDSvDCAPI import (  # noqa: E402
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace  # noqa: E402
-from pyDSvDCAPI.enums import (  # noqa: E402
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace  # noqa: E402
+from pydsvdcapi.enums import (  # noqa: E402
     ActionMode,
     ButtonClickType,
     ButtonElementID,
@@ -98,31 +98,31 @@ from pyDSvDCAPI.enums import (  # noqa: E402
     ButtonType,
     ColorGroup,
 )
-from pyDSvDCAPI import genericVDC_pb2 as pb  # noqa: E402
+from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 #: Persistence file (separate from the other demos).
-STATE_FILE = Path("/tmp/pyDSvDCAPI_btn_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_btn_demo_state.yaml")
 
 #: TCP port (digitalSTROM standard).
 PORT = 8444
 
 #: Host identity.
-MODEL_NAME = "pyDSvDCAPI Demo Gateway (Button)"
-HOST_NAME = "pyDSvDCAPI ButtonInput Demo Host"
-VENDOR = "pyDSvDCAPI"
+MODEL_NAME = "pydsvdcapi Demo Gateway (Button)"
+HOST_NAME = "pydsvdcapi ButtonInput Demo Host"
+VENDOR = "pydsvdcapi"
 
 #: vDC identity.
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-btn"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-btn"
 VDC_NAME = "Demo ButtonInput vDC"
-VDC_MODEL = "pyDSvDCAPI Demo Button Controller v1"
+VDC_MODEL = "pydsvdcapi Demo Button Controller v1"
 
 #: vdSD identity.
 VDSD_NAME = "Demo Button Device"
-VDSD_MODEL = "pyDSvDCAPI Virtual Button v1"
+VDSD_MODEL = "pydsvdcapi Virtual Button v1"
 VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light group — typical for switches
 
 #: Maximum seconds to wait for a vdSM connection.

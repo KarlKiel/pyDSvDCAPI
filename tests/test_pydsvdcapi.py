@@ -1,11 +1,11 @@
-"""Basic tests for pyDSvDCAPI."""
+"""Basic tests for pydsvdcapi."""
 
 from importlib.metadata import version
 
-import pyDSvDCAPI
+import pydsvdcapi
 
 
 def test_version():
     """Test that the package version matches the installed metadata."""
-    assert isinstance(pyDSvDCAPI.__version__, str)
-    assert pyDSvDCAPI.__version__ == version("pyDSvDCAPI")
+    assert isinstance(pydsvdcapi.__version__, str)
+    assert pydsvdcapi.__version__ == version("pydsvdcapi")

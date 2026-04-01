@@ -24,7 +24,7 @@ import logging
 import struct
 from typing import Optional
 
-from pyDSvDCAPI import genericVDC_pb2 as pb
+from pydsvdcapi import genericVDC_pb2 as pb
 
 logger = logging.getLogger(__name__)
 

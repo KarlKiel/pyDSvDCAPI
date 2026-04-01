@@ -49,40 +49,40 @@ _project_root = Path(__file__).resolve().parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from pyDSvDCAPI import (  # noqa: E402
+from pydsvdcapi import (  # noqa: E402
     Device,
     Vdc,
     VdcCapabilities,
     VdcHost,
     Vdsd,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace  # noqa: E402
-from pyDSvDCAPI.enums import ColorGroup  # noqa: E402
-from pyDSvDCAPI import genericVDC_pb2 as pb  # noqa: E402
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace  # noqa: E402
+from pydsvdcapi.enums import ColorGroup  # noqa: E402
+from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
 #: Persistence file.
-STATE_FILE = Path("/tmp/pyDSvDCAPI_vdsd_demo_state.yaml")
+STATE_FILE = Path("/tmp/pydsvdcapi_vdsd_demo_state.yaml")
 
 #: TCP port (digitalSTROM standard).
 PORT = 8444
 
 #: Host identity.
-MODEL_NAME = "pyDSvDCAPI Demo Gateway"
-HOST_NAME = "pyDSvDCAPI vdSD Demo Host"
-VENDOR = "pyDSvDCAPI"
+MODEL_NAME = "pydsvdcapi Demo Gateway"
+HOST_NAME = "pydsvdcapi vdSD Demo Host"
+VENDOR = "pydsvdcapi"
 
 #: vDC identity.
-VDC_IMPLEMENTATION_ID = "x-pyDSvDCAPI-demo-light"
+VDC_IMPLEMENTATION_ID = "x-pydsvdcapi-demo-light"
 VDC_NAME = "Demo Light vDC"
-VDC_MODEL = "pyDSvDCAPI Demo Light Controller v1"
+VDC_MODEL = "pydsvdcapi Demo Light Controller v1"
 
 #: vdSD identity.
 VDSD_NAME = "Demo Light Bulb"
-VDSD_MODEL = "pyDSvDCAPI Virtual Light v1"
+VDSD_MODEL = "pydsvdcapi Virtual Light v1"
 VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light
 
 #: Maximum seconds to wait for a vdSM connection.

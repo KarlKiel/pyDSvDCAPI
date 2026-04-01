@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from pyDSvDCAPI.binary_input import BinaryInput
-from pyDSvDCAPI.device_template import (
+from pydsvdcapi.binary_input import BinaryInput
+from pydsvdcapi.device_template import (
     AnnouncementNotReadyError,
     DeviceTemplate,
     TemplateNotConfiguredError,
@@ -28,14 +28,14 @@ from pyDSvDCAPI.device_template import (
     build_required_fields,
     strip_instance_fields,
 )
-from pyDSvDCAPI.dsuid import DsUid, DsUidNamespace
-from pyDSvDCAPI.enums import ColorGroup
-from pyDSvDCAPI.output import Output
-from pyDSvDCAPI.sensor_input import SensorInput
-from pyDSvDCAPI.session import VdcSession
-from pyDSvDCAPI.vdc import Vdc
-from pyDSvDCAPI.vdc_host import VdcHost
-from pyDSvDCAPI.vdsd import Device, Vdsd
+from pydsvdcapi.dsuid import DsUid, DsUidNamespace
+from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.output import Output
+from pydsvdcapi.sensor_input import SensorInput
+from pydsvdcapi.session import VdcSession
+from pydsvdcapi.vdc import Vdc
+from pydsvdcapi.vdc_host import VdcHost
+from pydsvdcapi.vdsd import Device, Vdsd
 
 
 # ---------------------------------------------------------------------------

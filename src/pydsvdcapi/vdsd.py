@@ -577,29 +577,73 @@ class Vdsd:
         """Remove a model feature flag (no-op if absent)."""
         self._model_features.discard(feature)
 
+    # Channel-type IDs that support transitions (used by derive_model_features).
+    _TRANST_CHANNEL_TYPES: frozenset = frozenset(
+        set(range(1, 13))   # 1–12
+        | set(range(14, 19))  # 14–18
+        | set(range(22, 25))  # 22–24
+    )
+
     def derive_model_features(self) -> None:
         """Derive and add model-feature flags from the configured components.
 
         Applies the following rules, adding to any already-set features
-        (duplicates are prevented automatically):
+        (duplicates are prevented automatically).  The method is called
+        automatically at the start of :meth:`announce`; it may also be
+        called manually to preview or refresh the flags.
 
-        * Any output present → ``"dontCare"``
-        * Binary input with ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
-        * Binary input with ``sensorFunction`` in {13, 14, 15} → ``"window"``
-        * Any sensor input present → ``"sensor"``
-        * Sensor input with ``sensorType`` 1 → ``"temperature"``
-        * Sensor input with ``sensorType`` 2 → ``"humidity"``
-        * Sensor input with ``sensorType`` 14 → ``"energy"``
-        * Output with ``activeGroup`` 1 → ``"light"``
-        * Output with ``function`` in {1, 3, 4} → ``"dimmable"``
-        * Output with ``activeGroup`` 2 **and** ``function`` 2 → ``"shade"``
+        **Sensor / input rules**
 
-        This method is automatically called at the start of
-        :meth:`announce` so that all components registered before
-        announcement are taken into account.  It may also be called
-        manually to preview or refresh the flags after adding or
-        removing components.
+        * Any output present → ``"dontcare"``
+        * Binary input ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
+        * Binary input ``sensorFunction`` in {13, 14, 15} → ``"window"``
+        * Any sensor input → ``"sensor"``
+        * Sensor ``sensorType`` 1 → ``"temperature"``
+        * Sensor ``sensorType`` 2 → ``"humidity"``
+        * Sensor ``sensorType`` 14 → ``"energy"``
+
+        **Output / channel rules**
+
+        * Output ``activeGroup`` 1 → ``"light"``
+        * Output ``function`` in {1, 3, 4} → ``"dimmable"``
+        * Output ``activeGroup`` 2 and ``function`` 2 → ``"shade"``
+        * Any channel with ``channelType`` in 1–12, 14–18, or 22–24 →
+          ``"transt"``
+        * Output with ``defaultGroup`` 2 → ``"shadeprops"``
+        * Output with ``defaultGroup`` 2 and ``function`` 2 →
+          ``"shadeposition"``; if additionally a channel with
+          ``channelType`` 9 or 10 exists → ``"shadebladeang"`` +
+          ``"motiontimefins"``
+        * All other outputs (``defaultGroup`` ≠ 2 or ``function`` ≠ 2),
+          *except* ``INTERNALLY_CONTROLLED`` → ``"outvalue8"``
+        * Output present and channels contain both ``channelType`` 2
+          and 3 → ``"outputchannels"``
+        * Output with ``defaultGroup`` in {3, 9, 10, 12, 48} and
+          ``function`` 0 → ``"heatingoutmode"`` + ``"pwmvalue"``
+
+        **Button rules**
+
+        * Any button → ``"pushbutton"`` + ``"pushbadvanced"``
+        * Button with ``group`` ≠ 8 → ``"pushbarea"``
+        * Button with ``group`` ≠ 8 and ``supportsLocalKeyMode`` →
+          ``"pushbdevice"``
+        * Button with ``group`` == 8 → ``"pushbsensor"`` + ``"highlevel"``
+        * Button with ``buttonType`` in {2, 3, 4, 5} → ``"pushbcombined"``
+        * Any button with ``dsIndex`` ≥ 1 → ``"twowayconfig"``
+
+        **Binary input rules**
+
+        * Binary input with ``group`` 8 → ``"akmsensor"`` + ``"akminput"``
+          + ``"akmdelay"``
+
+        **Primary-group rules**
+
+        * ``primaryGroup`` 3 (BLUE_CLIMATE) → ``"heatingprops"`` +
+          ``"heatinggroup"``; if output present also ``"valvetype"``
+        * ``primaryGroup`` 2 (GREY) with output → ``"locationconfig"`` +
+          ``"windprotectionconfig"``
         """
+        # ---- legacy rules (unchanged) --------------------------------
         if self._output is not None:
             self._model_features.add("dontcare")
 
@@ -630,6 +674,83 @@ class Vdsd:
                 self._model_features.add("dimmable")
             if ag == 2 and fn == 2:
                 self._model_features.add("shade")
+
+        # ---- output / channel rules ----------------------------------
+        if self._output is not None:
+            dg = self._output.default_group
+            fn = int(self._output.function)
+            ch_types = {
+                int(ch.channel_type)
+                for ch in self._output.channels.values()
+            }
+
+            # transt
+            if ch_types & self._TRANST_CHANNEL_TYPES:
+                self._model_features.add("transt")
+
+            # shade vs. normal output
+            if dg == 2:
+                self._model_features.add("shadeprops")
+                if fn == 2:
+                    self._model_features.add("shadeposition")
+                    if ch_types & {9, 10}:
+                        self._model_features.add("shadebladeang")
+                        self._model_features.add("motiontimefins")
+            elif fn != 6:
+                # INTERNALLY_CONTROLLED (6) = action output; suppresses outvalue8
+                self._model_features.add("outvalue8")
+
+            # outputchannels: HUE (2) AND SATURATION (3) both present
+            if {2, 3} <= ch_types:
+                self._model_features.add("outputchannels")
+
+            # heating output modes
+            if dg in {3, 9, 10, 12, 48} and fn == 0:
+                self._model_features.add("heatingoutmode")
+                self._model_features.add("pwmvalue")
+
+        # ---- button rules --------------------------------------------
+        if self._button_inputs:
+            self._model_features.add("pushbutton")
+            self._model_features.add("pushbadvanced")
+
+            for btn in self._button_inputs.values():
+                grp = btn.group
+                bt = int(btn.button_type)
+
+                if grp != 8:
+                    self._model_features.add("pushbarea")
+                    if btn.supports_local_key_mode:
+                        self._model_features.add("pushbdevice")
+                else:
+                    self._model_features.add("pushbsensor")
+                    self._model_features.add("highlevel")
+
+                if bt in {2, 3, 4, 5}:
+                    self._model_features.add("pushbcombined")
+
+                if btn.ds_index >= 1:
+                    self._model_features.add("twowayconfig")
+
+        # ---- binary input rules --------------------------------------
+        for bi in self._binary_inputs.values():
+            if bi.group == 8:
+                self._model_features.add("akmsensor")
+                self._model_features.add("akminput")
+                self._model_features.add("akmdelay")
+
+        # ---- primary-group rules -------------------------------------
+        pg = int(self._primary_group) if self._primary_group is not None else 0
+
+        if pg == 3:  # ColorClass.BLUE_CLIMATE
+            self._model_features.add("heatingprops")
+            self._model_features.add("heatinggroup")
+            if self._output is not None:
+                self._model_features.add("valvetype")
+
+        if pg == 2 and self._output is not None:  # ColorClass.GREY
+            self._model_features.add("locationconfig")
+            self._model_features.add("windprotectionconfig")
 
         logger.info(
             "[DIAG] derive_model_features '%s': %s",

@@ -6,7 +6,7 @@ import pytest
 
 from pydsvdcapi import genericVDC_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass, ColorGroup
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import (
@@ -378,7 +378,7 @@ def _make_host_with_device():
     base = DsUid.from_name_in_space("remove-test", DsUidNamespace.VDC)
     device = Device(vdc=vdc, dsuid=base)
     vdsd = Vdsd(
-        device=device, primary_group=ColorGroup.YELLOW, name="RemoveDev",
+        device=device, primary_group=ColorClass.YELLOW, name="RemoveDev",
     )
     device.add_vdsd(vdsd)
     vdc.add_device(device)
@@ -604,13 +604,13 @@ class TestHandleIdentifyNotification:
 
         base1 = DsUid.from_name_in_space("id-test-1", DsUidNamespace.VDC)
         dev1 = Device(vdc=vdc, dsuid=base1)
-        vdsd1 = Vdsd(device=dev1, primary_group=ColorGroup.YELLOW, name="Dev1")
+        vdsd1 = Vdsd(device=dev1, primary_group=ColorClass.YELLOW, name="Dev1")
         dev1.add_vdsd(vdsd1)
         vdc.add_device(dev1)
 
         base2 = DsUid.from_name_in_space("id-test-2", DsUidNamespace.VDC)
         dev2 = Device(vdc=vdc, dsuid=base2)
-        vdsd2 = Vdsd(device=dev2, primary_group=ColorGroup.YELLOW, name="Dev2")
+        vdsd2 = Vdsd(device=dev2, primary_group=ColorClass.YELLOW, name="Dev2")
         dev2.add_vdsd(vdsd2)
         vdc.add_device(dev2)
 

@@ -103,7 +103,7 @@ VDC_MODEL = "pydsvdcapi Demo Sensor Controller v1"
 #: vdSD identity.
 VDSD_NAME = "Demo Sensor Device"
 VDSD_MODEL = "pydsvdcapi Virtual Sensor v1"
-VDSD_PRIMARY_GROUP = ColorGroup.BLACK  # Joker / sensor
+VDSD_PRIMARY_GROUP = ColorClass.BLACK  # Joker / sensor
 
 #: Maximum seconds to wait for a vdSM connection.
 CONNECT_TIMEOUT = 120

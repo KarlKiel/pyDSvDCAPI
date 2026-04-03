@@ -78,7 +78,7 @@ VDC_NAME = "Output Demo vDC"
 VDC_MODEL = "pydsvdcapi-output-vdc"
 VDSD_NAME = "RGBW LED Strip"
 VDSD_MODEL = "pydsvdcapi-output-vdsd"
-VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light device
+VDSD_PRIMARY_GROUP = ColorClass.YELLOW  # Light device
 
 #: How long to wait for the vdSM/dSS to connect (seconds).
 CONNECT_TIMEOUT = 120

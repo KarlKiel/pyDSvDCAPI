@@ -25,6 +25,7 @@ from pydsvdcapi.enums import (
     ButtonFunction,
     ButtonMode,
     ButtonType,
+    ColorClass,
     ColorGroup,
     InputError,
 )
@@ -70,7 +71,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.BLACK,
+        "primary_group": ColorClass.BLACK,
         "name": "Btn Test vdSD",
     }
     defaults.update(kwargs)

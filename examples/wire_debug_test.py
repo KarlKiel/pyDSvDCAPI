@@ -94,7 +94,7 @@ async def main():
     # ONE vdSD with ONE state, ONE property, ONE event
     vdsd = Vdsd(
         device=device, subdevice_index=0,
-        primary_group=ColorGroup.CYAN,
+        primary_group=ColorClass.CYAN,
         name="Wire Debug Device",
         model="debug-device",
         model_features={"identification"},

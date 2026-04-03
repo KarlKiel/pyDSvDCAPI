@@ -10,6 +10,7 @@ import pytest
 from pydsvdcapi import genericVDC_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import (
+    ColorClass,
     ColorGroup,
     HeatingSystemCapability,
     HeatingSystemType,
@@ -61,7 +62,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Output Test vdSD",
     }
     defaults.update(kwargs)
@@ -2297,7 +2298,7 @@ class TestSceneZoneGroupFiltering:
     """Tests for zone/group filtering in VdcHost scene dispatch."""
 
     def _make_registered_stack(
-        self, *, zone_id=0, primary_group=ColorGroup.YELLOW,
+        self, *, zone_id=0, primary_group=ColorClass.YELLOW,
         active_group=None, groups=None,
     ):
         host = _make_host()
@@ -2329,7 +2330,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_matching_group_applies(self):
         """callScene with matching group applies the scene."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2350,7 +2351,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_wrong_group_skips(self):
         """callScene with non-matching group skips the device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2371,7 +2372,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_wrong_zone_skips(self):
         """callScene with non-matching zone skips the device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2392,7 +2393,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_zero_group_matches_all(self):
         """group=0 means 'not specified' and matches any device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2412,7 +2413,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_secondary_group_matches(self):
         """callScene matches if group is in output.groups (secondary)."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
             groups={int(ColorGroup.GREY)},
         )
         ch = out.get_channel(0)
@@ -2436,7 +2437,7 @@ class TestSceneZoneGroupFiltering:
     async def test_save_scene_matching_group_saves(self):
         """saveScene with matching group saves the scene."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(77.0)
@@ -2459,7 +2460,7 @@ class TestSceneZoneGroupFiltering:
     async def test_save_scene_wrong_group_skips(self):
         """saveScene with non-matching group doesn't save."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(77.0)
@@ -2488,7 +2489,7 @@ class TestSceneZoneGroupFiltering:
     async def test_undo_scene_matching_group_undoes(self):
         """undoScene with matching group and matching scene undoes."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -2519,7 +2520,7 @@ class TestSceneZoneGroupFiltering:
     async def test_undo_scene_wrong_group_no_undo(self):
         """undoScene with different group does not undo."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
             groups={int(ColorGroup.GREY)},
         )
         ch = out.get_channel(0)
@@ -2553,7 +2554,7 @@ class TestSceneZoneGroupFiltering:
     async def test_set_local_priority_matching_group(self):
         """setLocalPriority with matching group sets LP."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         assert out.local_priority is False
 
@@ -2572,7 +2573,7 @@ class TestSceneZoneGroupFiltering:
     async def test_set_local_priority_wrong_group_skips(self):
         """setLocalPriority with non-matching group does not set LP."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         assert out.local_priority is False
 
@@ -2593,7 +2594,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_min_scene_matching_group_applies(self):
         """callMinScene with matching group sets min-on."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(0.0)
@@ -2614,7 +2615,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_min_scene_wrong_zone_skips(self):
         """callMinScene with non-matching zone does not act."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(0.0)
@@ -2638,7 +2639,7 @@ class TestSceneZoneGroupFiltering:
         """Full roundtrip: callScene dispatch stores group-keyed undo
         that can only be undone with the same group."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(55.0)
@@ -2713,7 +2714,7 @@ class TestMatchesZoneAndGroup:
         """primary_group on vdsd is NOT used — only active_group matters."""
         host = _make_host()
         _, _, _, vdsd = _make_stack(
-            primary_group=ColorGroup.YELLOW, zone_id=42,
+            primary_group=ColorClass.YELLOW, zone_id=42,
         )
         out = _make_output(vdsd, function=OutputFunction.DIMMER)
         out.active_group = int(ColorGroup.GREY)  # different from primary

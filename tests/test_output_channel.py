@@ -25,6 +25,7 @@ import pytest
 
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import (
+    ColorClass,
     ColorGroup,
     OutputChannelType,
     OutputFunction,
@@ -82,7 +83,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Channel Test vdSD",
     }
     defaults.update(kwargs)
@@ -1274,7 +1275,7 @@ class TestEdgeCases:
         d1_uid = DsUid.from_name_in_space("dev1", DsUidNamespace.VDC)
         d1 = Device(vdc=vdc, dsuid=d1_uid)
         vdsd1 = Vdsd(
-            device=d1, primary_group=ColorGroup.YELLOW, name="D1"
+            device=d1, primary_group=ColorClass.YELLOW, name="D1"
         )
         d1.add_vdsd(vdsd1)
         vdc.add_device(d1)
@@ -1282,7 +1283,7 @@ class TestEdgeCases:
         d2_uid = DsUid.from_name_in_space("dev2", DsUidNamespace.VDC)
         d2 = Device(vdc=vdc, dsuid=d2_uid)
         vdsd2 = Vdsd(
-            device=d2, primary_group=ColorGroup.YELLOW, name="D2"
+            device=d2, primary_group=ColorClass.YELLOW, name="D2"
         )
         d2.add_vdsd(vdsd2)
         vdc.add_device(d2)

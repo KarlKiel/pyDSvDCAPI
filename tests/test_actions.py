@@ -17,7 +17,7 @@ from pydsvdcapi.actions import (
     StandardAction,
 )
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass, ColorGroup
 from pydsvdcapi.property_handling import elements_to_dict
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
@@ -62,7 +62,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Action Test vdSD",
     }
     defaults.update(kwargs)
@@ -632,7 +632,7 @@ class TestGetPropertiesActions:
         assert "deviceActionDescriptions" in props
         assert "standardActions" in props
         assert "customActions" in props
-        assert "dynamicDeviceActions" in props
+        assert "dynamicActionDescriptions" in props
 
     def test_action_descriptions_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -689,7 +689,7 @@ class TestGetPropertiesActions:
         )
         vdsd.add_dynamic_action(dyn)
         props = vdsd.get_properties()
-        da = props["dynamicDeviceActions"]
+        da = props["dynamicActionDescriptions"]
         assert "0" in da
         assert da["0"]["name"] == "dynamic.x"
         assert da["0"]["title"] == "X"
@@ -708,7 +708,7 @@ class TestGetPropertiesActions:
         assert props["deviceActionDescriptions"] == {}
         assert props["standardActions"] == {}
         assert props["customActions"] == {}
-        assert props["dynamicDeviceActions"] == {}
+        assert props["dynamicActionDescriptions"] == {}
 
     def test_no_single_device_without_features(self):
         """Without any SingleDevice feature, action containers absent."""
@@ -717,7 +717,7 @@ class TestGetPropertiesActions:
         assert "deviceActionDescriptions" not in props
         assert "standardActions" not in props
         assert "customActions" not in props
-        assert "dynamicDeviceActions" not in props
+        assert "dynamicActionDescriptions" not in props
 
 
 # ===========================================================================

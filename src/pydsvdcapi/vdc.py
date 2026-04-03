@@ -409,17 +409,29 @@ class Vdc:
 
         This should be called after the vDC itself has been announced.
 
+        Devices are announced concurrently.  The dSM may query all
+        registered devices immediately upon receiving the first
+        ``ANNOUNCE_DEVICE`` message, and will not confirm any single
+        announce until all pending announces are in flight.  Sequential
+        announcement would therefore deadlock on multi-device vDCs.
+
         Returns the total number of vdSDs successfully announced.
         """
-        total = 0
-        for device in self._devices.values():
-            if not device.is_announced:
-                try:
-                    total += await device.announce(session)
-                except Exception:  # noqa: BLE001
-                    logger.exception(
-                        "Failed to announce device %s", device.dsuid
-                    )
+        import asyncio as _asyncio
+
+        unanounced = [d for d in self._devices.values() if not d.is_announced]
+
+        async def _announce_one(device) -> int:
+            try:
+                return await device.announce(session)
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "Failed to announce device %s", device.dsuid
+                )
+                return 0
+
+        results = await _asyncio.gather(*[_announce_one(d) for d in unanounced])
+        total = sum(results)
         logger.info(
             "vDC '%s': announced %d vdSD(s) across %d device(s)",
             self.name, total, len(self._devices),

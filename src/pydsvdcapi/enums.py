@@ -109,28 +109,54 @@ class EntityType(IntEnum):
 
 
 @unique
-class ColorGroup(IntEnum):
-    """digitalSTROM application groups (colour groups).
+class ColorClass(IntEnum):
+    """digitalSTROM device colour class.
 
-    Each group has an associated colour and a primary output channel type.
+    Used for the ``primaryGroup`` property of a vdSD.  This is the device's
+    "colour class" as defined in the digitalSTROM specification — distinct from
+    the output *group* numbers used for scene calls (see :class:`ColorGroup`).
+
+    Value 9 (WHITE) is used to mark a device as a **Single Device** (Einzelgerät),
+    which enables the SingleDevice configurator UI in the dSS.
     """
 
-    YELLOW = 1       # Lights
-    GREY = 2         # Blinds / Shades
-    BLUE_HEATING = 3          # Heating
-    CYAN = 4         # Audio
-    MAGENTA = 5      # Video
-    RED = 6          # Security (not directly group-addressable)
-    GREEN = 7        # Access  (not directly group-addressable)
-    BLACK = 8        # Joker / Configurable
-    BLUE_COOLING = 9          # Cooling
-    BLUE_VENTILATION = 10     # Ventilation
-    BLUE_WINDOW = 11          # Window
-    BLUE_RECIRCULATION = 12   # Recirculation / Fan coil units
-    BLUE_TEMPERATURE_CONTROL = 48  # Single room temperature control
-    BLUE_APARTMENT_VENTILATION = 64  # Apartment ventilation system
-    # WHITE = 255      # Single device (no fixed group ID in spec)
-    WHITE = 0     # "BROADCAST"Used in some contexts to indicate no group / default group
+    YELLOW = 1        # gelb/hell — Light
+    GREY = 2          # Grau/Schatten — Shade / Blinds
+    BLUE_CLIMATE = 3  # Blau/Klima — Climate (heating, cooling, ventilation…)
+    CYAN = 4          # Cyan/Audio — Audio
+    MAGENTA = 5       # Magenta/Video — Video
+    RED = 6           # Rot/Sicherheit — Security
+    GREEN = 7         # Grün/Zugang — Access
+    BLACK = 8         # Schwarz/Joker — Joker / Configurable
+    WHITE = 9         # Weiß/Einzelgerät — Single Device
+
+
+class ColorGroup(IntEnum):
+    """digitalSTROM output application groups.
+
+    Used to identify which *output group* a device belongs to (e.g. for scene
+    calls).  These numbers are used in protobuf group fields, :class:`Output`
+    ``default_group`` / ``active_group``, :class:`ButtonInput` ``group``, etc.
+
+    Note: the values 1–8 overlap with :class:`ColorClass`, but value 9 differs:
+    here it is ``BLUE_COOLING`` (output group), whereas in :class:`ColorClass`
+    9 is ``WHITE`` (SingleDevice colour class).
+    """
+
+    YELLOW = 1        # gelb/Licht — Light
+    GREY = 2          # grau/Schatten — Shade / Blinds
+    BLUE_HEATING = 3  # blau/Heizung — Heating
+    CYAN = 4          # cyan/Audio — Audio
+    MAGENTA = 5       # magenta/Video — Video
+    RED = 6           # rot/Sicherheit — Security
+    GREEN = 7         # grün/Zugang — Access
+    BLACK = 8         # schwarz/variabel — Joker / Configurable
+    BLUE_COOLING = 9          # blau/Kühlung — Cooling
+    BLUE_VENTILATION = 10     # blau/Lüftung — Ventilation
+    BLUE_WINDOW = 11          # blau/Fenster — Window
+    BLUE_RECIRCULATION = 12   # blau/Umluft — Recirculation / fan-coil
+    BLUE_TEMPERATURE_CONTROL = 48   # Raumtemperaturregelung
+    BLUE_VENTILATION_CONTROL = 49   # Raumlüftungsregelung
 
 # ---------------------------------------------------------------------------
 #  Scene numbers  (ds-basics Appendix B)
@@ -676,6 +702,12 @@ class SensorType(IntEnum):
     GENERATED_ENERGY = 26
     WATER_QUANTITY = 27
     WATER_FLOW_RATE = 28
+    LENGTH = 29
+    MASS = 30
+    DURATION = 31
+    PERCENT = 32
+    PERCENT_SPEED = 33
+    FREQUENCY = 34
 
 
 @unique

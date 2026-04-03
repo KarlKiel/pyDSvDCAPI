@@ -39,13 +39,13 @@ Device/Vdsd objects from the persisted data.
 Usage example::
 
     from pydsvdcapi import Vdc, Device, Vdsd
-    from pydsvdcapi.enums import ColorGroup
+    from pydsvdcapi.enums import ColorClass
 
     vdc = Vdc(host=host, implementation_id="x-acme-light")
 
     # Single-vdSD device (common case)
     device = Device(vdc=vdc, dsuid=my_dsuid)
-    vdsd = Vdsd(device=device, primary_group=ColorGroup.YELLOW,
+    vdsd = Vdsd(device=device, primary_group=ColorClass.YELLOW,
                 name="Kitchen Light")
     device.add_vdsd(vdsd)
     vdc.add_device(device)
@@ -53,9 +53,9 @@ Usage example::
     # Multi-vdSD device (e.g. combined light + shade)
     base = DsUid.from_enocean("0512ABCD")
     device2 = Device(vdc=vdc, dsuid=base)
-    vdsd_light = Vdsd(device=device2, primary_group=ColorGroup.YELLOW,
+    vdsd_light = Vdsd(device=device2, primary_group=ColorClass.YELLOW,
                       subdevice_index=0, name="Light")
-    vdsd_shade = Vdsd(device=device2, primary_group=ColorGroup.GREY,
+    vdsd_shade = Vdsd(device=device2, primary_group=ColorClass.GREY,
                       subdevice_index=1, name="Shade")
     device2.add_vdsd(vdsd_light)
     device2.add_vdsd(vdsd_shade)
@@ -80,7 +80,7 @@ from typing import (
 
 from pydsvdcapi import genericVDC_pb2 as pb
 from pydsvdcapi.dsuid import DsUid
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass, ColorGroup
 
 if TYPE_CHECKING:
     from pydsvdcapi.actions import (
@@ -247,7 +247,7 @@ class Vdsd:
         self,
         *,
         device: Device,
-        primary_group: ColorGroup = ColorGroup.BLACK,
+        primary_group: Optional[ColorClass] = ColorClass.BLACK,
         subdevice_index: int = 0,
         name: Optional[str] = None,
         model: str = "pydsvdcapi vdSD",
@@ -304,7 +304,7 @@ class Vdsd:
         self.device_class_version: Optional[str] = device_class_version
 
         # --- vdSD-specific properties ---------------------------------
-        self._primary_group: ColorGroup = primary_group
+        self._primary_group: Optional[ColorClass] = primary_group
         self.zone_id: int = zone_id
         self._model_features: Set[str] = (
             set(model_features) if model_features else set()
@@ -379,7 +379,7 @@ class Vdsd:
         return self._subdevice_index
 
     @property
-    def primary_group(self) -> ColorGroup:
+    def primary_group(self) -> Optional[ColorClass]:
         """The primary dS class (colour) of this device."""
         return self._primary_group
 
@@ -601,7 +601,7 @@ class Vdsd:
         removing components.
         """
         if self._output is not None:
-            self._model_features.add("dontCare")
+            self._model_features.add("dontcare")
 
         for bi in self._binary_inputs.values():
             sf = int(bi.sensor_function)
@@ -630,6 +630,11 @@ class Vdsd:
                 self._model_features.add("dimmable")
             if ag == 2 and fn == 2:
                 self._model_features.add("shade")
+
+        logger.info(
+            "[DIAG] derive_model_features '%s': %s",
+            self.name, sorted(self._model_features),
+        )
 
     # ---- binary input management -------------------------------------
 
@@ -1287,7 +1292,7 @@ class Vdsd:
             "deviceClassVersion": self.device_class_version,
             "active": self._active,
             # vdSD-specific properties
-            "primaryGroup": int(self._primary_group),
+            "primaryGroup": int(self._primary_group) if self._primary_group is not None else None,
             "zoneID": self.zone_id,
             "progMode": self.prog_mode,
             "currentConfigId": self.current_config_id,
@@ -1393,39 +1398,37 @@ class Vdsd:
             } if self._custom_actions else {}
 
             # Dynamic device actions (§4.5.3).
-            props["dynamicDeviceActions"] = {
+            props["dynamicActionDescriptions"] = {
                 str(dyn.ds_index): dyn.get_properties()
                 for dyn in self._dynamic_actions.values()
             } if self._dynamic_actions else {}
 
-        # Device event descriptions (§4.7).
-        if self._device_events:
+            # Device event descriptions (§4.7) — always present for
+            # SingleDevice, even if empty (p44vdc always has all 9 keys).
             props["deviceEventDescriptions"] = {
                 str(evt.ds_index): evt.get_description_properties()
                 for evt in self._device_events.values()
-            }
+            } if self._device_events else {}
 
-        # Device state descriptions & values (§4.6.1 / §4.6.2).
-        if self._device_states:
+            # Device state descriptions & values (§4.6.1 / §4.6.2).
             props["deviceStateDescriptions"] = {
                 str(st.ds_index): st.get_description_properties()
                 for st in self._device_states.values()
-            }
+            } if self._device_states else {}
             props["deviceStates"] = {
                 str(st.ds_index): st.get_state_properties()
                 for st in self._device_states.values()
-            }
+            } if self._device_states else {}
 
-        # Device property descriptions & values (§4.6.3 / §4.6.4).
-        if self._device_properties:
+            # Device property descriptions & values (§4.6.3 / §4.6.4).
             props["devicePropertyDescriptions"] = {
                 str(prop.ds_index): prop.get_description_properties()
                 for prop in self._device_properties.values()
-            }
+            } if self._device_properties else {}
             props["deviceProperties"] = {
                 str(prop.ds_index): prop.get_value_properties()
                 for prop in self._device_properties.values()
-            }
+            } if self._device_properties else {}
 
         # Output component properties (§4.8).
         if self._output is not None:
@@ -1486,7 +1489,7 @@ class Vdsd:
         node: Dict[str, Any] = {
             "subdeviceIndex": self._subdevice_index,
             "dSUID": str(self._dsuid),
-            "primaryGroup": int(self._primary_group),
+            "primaryGroup": int(self._primary_group) if self._primary_group is not None else None,
             "name": self.name,
             "model": self.model,
             "modelVersion": self.model_version,
@@ -1597,7 +1600,7 @@ class Vdsd:
             if "subdeviceIndex" in state:
                 self._subdevice_index = int(state["subdeviceIndex"])
             if "primaryGroup" in state:
-                self._primary_group = ColorGroup(
+                self._primary_group = ColorClass(
                     int(state["primaryGroup"])
                 )
             if "name" in state:
@@ -1824,6 +1827,14 @@ class Vdsd:
             # Start alive timers for all sensor inputs.
             for si in self._sensor_inputs.values():
                 si.start_alive_timer(session)
+            # Push initial state for inputs that already have a value
+            # (mirrors vdSMAnnouncementAcknowledged in p44vdc device.cpp).
+            for si in self._sensor_inputs.values():
+                if si.value is not None:
+                    await si._push_state(session, force=True)
+            for bi in self._binary_inputs.values():
+                if bi.value is not None or bi.extended_value is not None:
+                    await bi._push_state(session, force=True)
             # Start session for output.
             if self._output is not None:
                 self._output.start_session(session)
@@ -2165,7 +2176,7 @@ class Device:
             def reconfigure(dev: Device):
                 dev.get_vdsd(0).name = "Updated Name"
                 dev.add_vdsd(Vdsd(device=dev, subdevice_index=2,
-                                  primary_group=ColorGroup.GREY))
+                                  primary_group=ColorClass.GREY))
 
             await device.update(session, reconfigure)
         """
@@ -2253,8 +2264,8 @@ class Device:
             vdsd = self._vdsds.get(idx)
             if vdsd is None:
                 # Create a new Vdsd for this persisted entry.
-                primary_group = ColorGroup(
-                    vdsd_state.get("primaryGroup", ColorGroup.BLACK)
+                primary_group = ColorClass(
+                    vdsd_state.get("primaryGroup", ColorClass.BLACK)
                 )
                 vdsd = Vdsd(
                     device=self,

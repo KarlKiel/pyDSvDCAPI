@@ -12,6 +12,7 @@ import pytest
 from pydsvdcapi import genericVDC_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import (
+    ColorClass,
     ColorGroup,
     InputError,
     SensorType,
@@ -60,7 +61,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.BLACK,
+        "primary_group": ColorClass.BLACK,
         "name": "SI Test vdSD",
     }
     defaults.update(kwargs)

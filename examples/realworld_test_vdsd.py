@@ -57,7 +57,7 @@ from pydsvdcapi import (  # noqa: E402
     Vdsd,
 )
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace  # noqa: E402
-from pydsvdcapi.enums import ColorGroup  # noqa: E402
+from pydsvdcapi.enums import ColorClass, ColorGroup  # noqa: E402
 from pydsvdcapi import genericVDC_pb2 as pb  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ VDC_MODEL = "pydsvdcapi Demo Light Controller v1"
 #: vdSD identity.
 VDSD_NAME = "Demo Light Bulb"
 VDSD_MODEL = "pydsvdcapi Virtual Light v1"
-VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light
+VDSD_PRIMARY_GROUP = ColorClass.YELLOW  # Light
 
 #: Maximum seconds to wait for a vdSM connection.
 CONNECT_TIMEOUT = 120

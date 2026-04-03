@@ -29,7 +29,7 @@ from pydsvdcapi.device_template import (
     strip_instance_fields,
 )
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass
 from pydsvdcapi.output import Output
 from pydsvdcapi.sensor_input import SensorInput
 from pydsvdcapi.session import VdcSession
@@ -71,7 +71,7 @@ def _make_simple_device(vdc: Vdc, name: str = "Test Light") -> Device:
     device = Device(vdc=vdc, dsuid=_base_dsuid())
     vdsd = Vdsd(
         device=device,
-        primary_group=ColorGroup.YELLOW,
+        primary_group=ColorClass.YELLOW,
         name=name,
         model="Test Model",
         zone_id=0,
@@ -85,7 +85,7 @@ def _make_output_device(vdc: Vdc, name: str = "Dimmer") -> Device:
     device = Device(vdc=vdc, dsuid=_base_dsuid())
     vdsd = Vdsd(
         device=device,
-        primary_group=ColorGroup.YELLOW,
+        primary_group=ColorClass.YELLOW,
         name=name,
         model="Dimmer Model",
     )
@@ -306,7 +306,7 @@ class TestDeviceTemplateInstantiate:
                 "vdsds": [
                     {
                         "subdeviceIndex": 0,
-                        "primaryGroup": int(ColorGroup.YELLOW),
+                        "primaryGroup": int(ColorClass.YELLOW),
                         "model": "Dimmer Model",
                     }
                 ]

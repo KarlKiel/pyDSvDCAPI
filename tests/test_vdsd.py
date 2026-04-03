@@ -12,7 +12,7 @@ import yaml
 
 from pydsvdcapi import genericVDC_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass, ColorGroup
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import VdcHost
@@ -56,7 +56,7 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(
     device: Device,
     subdevice_index: int = 0,
-    primary_group: ColorGroup = ColorGroup.YELLOW,
+    primary_group: ColorClass = ColorClass.YELLOW,
     **kwargs: Any,
 ) -> Vdsd:
     defaults: dict[str, Any] = {
@@ -101,7 +101,7 @@ class TestVdsdConstruction:
         assert vdsd.entity_type == ENTITY_TYPE_VDSD
         assert vdsd.entity_type == "vdSD"
         assert vdsd.subdevice_index == 0
-        assert vdsd.primary_group == ColorGroup.YELLOW
+        assert vdsd.primary_group == ColorClass.YELLOW
         assert vdsd.name == "Test vdSD 0"
         assert vdsd.zone_id == 0
         assert vdsd.is_announced is False
@@ -185,7 +185,7 @@ class TestVdsdConstruction:
         device = _make_device(vdc)
         vdsd = Vdsd(device=device)
 
-        assert vdsd.primary_group == ColorGroup.BLACK
+        assert vdsd.primary_group == ColorClass.BLACK
 
 
 # ===========================================================================
@@ -278,7 +278,7 @@ class TestVdsdGetProperties:
         device = _make_device(vdc)
         vdsd = _make_vdsd(
             device,
-            primary_group=ColorGroup.GREY,
+            primary_group=ColorClass.GREY,
             zone_id=42,
             model_features={"shadeprops", "shadeposition"},
         )
@@ -314,7 +314,7 @@ class TestVdsdPropertyTree:
         device = _make_device(vdc)
         vdsd = _make_vdsd(
             device,
-            primary_group=ColorGroup.YELLOW,
+            primary_group=ColorClass.YELLOW,
             model_features={"blink"},
         )
 
@@ -359,7 +359,7 @@ class TestVdsdApplyState:
 
         assert vdsd.name == "Restored Name"
         assert vdsd.zone_id == 99
-        assert vdsd.primary_group == ColorGroup.GREY
+        assert vdsd.primary_group == ColorClass.GREY
         assert vdsd.model_features == {"blink", "shadeprops"}
 
     def test_restore_dsuid(self):
@@ -811,7 +811,7 @@ class TestDevicePropertyTree:
         v0 = _make_vdsd(device, subdevice_index=0, name="Light")
         v2 = _make_vdsd(
             device, subdevice_index=2, name="Shade",
-            primary_group=ColorGroup.GREY,
+            primary_group=ColorClass.GREY,
         )
         device.add_vdsd(v0)
         device.add_vdsd(v2)
@@ -999,7 +999,7 @@ class TestVdcPersistenceWithDevices:
         device = Device(vdc=vdc, dsuid=base)
         v0 = Vdsd(
             device=device, subdevice_index=0,
-            primary_group=ColorGroup.YELLOW,
+            primary_group=ColorClass.YELLOW,
             name="Kitchen Light",
             model="Light v1",
             zone_id=5,
@@ -1007,7 +1007,7 @@ class TestVdcPersistenceWithDevices:
         )
         v2 = Vdsd(
             device=device, subdevice_index=2,
-            primary_group=ColorGroup.GREY,
+            primary_group=ColorClass.GREY,
             name="Kitchen Shade",
             model="Shade v1",
             zone_id=5,
@@ -1049,11 +1049,11 @@ class TestVdcPersistenceWithDevices:
         assert r0 is not None
         assert r2 is not None
         assert r0.name == "Kitchen Light"
-        assert r0.primary_group == ColorGroup.YELLOW
+        assert r0.primary_group == ColorClass.YELLOW
         assert r0.zone_id == 5
         assert r0.model_features == {"blink", "identification"}
         assert r2.name == "Kitchen Shade"
-        assert r2.primary_group == ColorGroup.GREY
+        assert r2.primary_group == ColorClass.GREY
 
 
 # ===========================================================================
@@ -1119,7 +1119,7 @@ class TestVdcHostVdsdPropertyDispatch:
         device = _make_device(vdc)
         vdsd = _make_vdsd(
             device, subdevice_index=0,
-            primary_group=ColorGroup.YELLOW,
+            primary_group=ColorClass.YELLOW,
             name="Test Light",
         )
         device.add_vdsd(vdsd)
@@ -1390,9 +1390,9 @@ class TestMultiVdsdDsuid:
         device = Device(vdc=vdc, dsuid=base)
 
         v0 = Vdsd(device=device, subdevice_index=0,
-                   primary_group=ColorGroup.YELLOW)
+                   primary_group=ColorClass.YELLOW)
         v2 = Vdsd(device=device, subdevice_index=2,
-                   primary_group=ColorGroup.GREY)
+                   primary_group=ColorClass.GREY)
         device.add_vdsd(v0)
         device.add_vdsd(v2)
 

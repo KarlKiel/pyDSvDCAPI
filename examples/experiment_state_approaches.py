@@ -58,6 +58,7 @@ from pydsvdcapi import (
     BinaryInput,
     BinaryInputType,
     BinaryInputUsage,
+    ColorClass,
     ColorGroup,
     Device,
     DeviceEvent,
@@ -257,7 +258,7 @@ def make_device_a(device: Device) -> Vdsd:
     vdsd = Vdsd(
         device=device,
         subdevice_index=0,
-        primary_group=ColorGroup.CYAN,
+        primary_group=ColorClass.CYAN,
         name="[A] API deviceStates",
         model="experiment-variant-a",
         model_features={"identification"},
@@ -299,7 +300,7 @@ def make_device_b(device: Device) -> Vdsd:
     vdsd = Vdsd(
         device=device,
         subdevice_index=1,
-        primary_group=ColorGroup.CYAN,
+        primary_group=ColorClass.CYAN,
         name="[B] Sonos-style StatusXxx",
         model="experiment-variant-b",
         model_features={"identification"},
@@ -348,7 +349,7 @@ def make_device_c(device: Device) -> Vdsd:
     vdsd = Vdsd(
         device=device,
         subdevice_index=2,
-        primary_group=ColorGroup.BLACK,
+        primary_group=ColorClass.BLACK,
         name="[C] BinaryInputs only",
         model="experiment-variant-c",
         model_features={"identification"},
@@ -387,7 +388,7 @@ def make_device_d(device: Device) -> Vdsd:
     vdsd = Vdsd(
         device=device,
         subdevice_index=3,
-        primary_group=ColorGroup.CYAN,
+        primary_group=ColorClass.CYAN,
         name="[D] SensorInputs only",
         model="experiment-variant-d",
         model_features={"identification"},
@@ -424,7 +425,7 @@ def make_device_e(device: Device) -> Vdsd:
     vdsd = Vdsd(
         device=device,
         subdevice_index=4,
-        primary_group=ColorGroup.CYAN,
+        primary_group=ColorClass.CYAN,
         name="[E] Combined all approaches",
         model="experiment-variant-e",
         model_features={"identification"},

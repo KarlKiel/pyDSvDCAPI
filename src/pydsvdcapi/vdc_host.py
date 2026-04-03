@@ -1142,8 +1142,28 @@ class VdcHost:
             len(msg.vdsm_request_get_property.query),
             query_names,
         )
+        # DIAG: show sub-element count for each query element
+        for q in msg.vdsm_request_get_property.query:
+            if q.name in ("modelFeatures", "sensorDescriptions", "binaryInputDescriptions"):
+                logger.info(
+                    "[DIAG] query '%s' sub-elements: %d → %s",
+                    q.name, len(q.elements),
+                    [e.name for e in q.elements],
+                )
+                if q.name in ("modelFeatures",):
+                    logger.info("[DIAG] props['modelFeatures'] = %r", props.get("modelFeatures"))
 
         resp = build_get_property_response(msg, props)
+
+        # DIAG: show what we returned for diagnostic query elements
+        for p in resp.vdc_response_get_property.properties:
+            if p.name in ("modelFeatures", "sensorDescriptions", "binaryInputDescriptions"):
+                logger.info(
+                    "[DIAG] response '%s': sub-elements=%d → %s",
+                    p.name,
+                    len(p.elements),
+                    [(e.name, len(e.elements), str(e.value)[:40] if e.HasField("value") else "-") for e in p.elements],
+                )
 
         return resp
 

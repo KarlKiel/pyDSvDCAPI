@@ -123,7 +123,7 @@ VDC_MODEL = "pydsvdcapi Demo Button Controller v1"
 #: vdSD identity.
 VDSD_NAME = "Demo Button Device"
 VDSD_MODEL = "pydsvdcapi Virtual Button v1"
-VDSD_PRIMARY_GROUP = ColorGroup.YELLOW  # Light group — typical for switches
+VDSD_PRIMARY_GROUP = ColorClass.YELLOW  # Light group — typical for switches
 
 #: Maximum seconds to wait for a vdSM connection.
 CONNECT_TIMEOUT = 120

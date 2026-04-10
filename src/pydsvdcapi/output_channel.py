@@ -172,16 +172,8 @@ CHANNEL_SPECS: Dict[OutputChannelType, ChannelSpec] = {
         name="heatingPower", min_value=0, max_value=100,
         resolution=100 / 255,
     ),
-    OutputChannelType.HEATING_VALVE: ChannelSpec(
-        name="heatingValue", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
     OutputChannelType.COOLING_CAPACITY: ChannelSpec(
         name="coolingCapacity", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
-    OutputChannelType.COOLING_VALVE: ChannelSpec(
-        name="coolingValue", min_value=0, max_value=100,
         resolution=100 / 255,
     ),
     OutputChannelType.AIR_FLOW_INTENSITY: ChannelSpec(
@@ -211,37 +203,28 @@ CHANNEL_SPECS: Dict[OutputChannelType, ChannelSpec] = {
         name="audioVolume", min_value=0, max_value=100,
         resolution=100 / 255,
     ),
-    OutputChannelType.AUDIO_BASS: ChannelSpec(
-        name="audioBass", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
-    OutputChannelType.AUDIO_TREBLE: ChannelSpec(
-        name="audioTreble", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
-    OutputChannelType.AUDIO_BALANCE: ChannelSpec(
-        name="audioBalance", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
     # -- Misc channels -------------------------------------------------
     OutputChannelType.WATER_TEMPERATURE: ChannelSpec(
         name="waterTemperature", min_value=0, max_value=150,
         resolution=150 / 255,
     ),
-    OutputChannelType.WATER_FLOW: ChannelSpec(
-        name="waterFlow", min_value=0, max_value=100,
+    OutputChannelType.WATER_FLOW_RATE: ChannelSpec(
+        name="waterFlowRate", min_value=0, max_value=100,
         resolution=100 / 255,
     ),
     OutputChannelType.POWER_STATE: ChannelSpec(
         name="powerState", min_value=0, max_value=3, resolution=1,
     ),
-    OutputChannelType.WIND_SPEED_RATE: ChannelSpec(
-        name="windSpeedRate", min_value=0, max_value=100,
-        resolution=100 / 255,
-    ),
     OutputChannelType.POWER_LEVEL: ChannelSpec(
         name="powerLevel", min_value=0, max_value=100,
         resolution=100 / 255,
+    ),
+    # -- Video channels ------------------------------------------------
+    OutputChannelType.VIDEO_STATION: ChannelSpec(
+        name="videoStation", min_value=0, max_value=65535, resolution=1,
+    ),
+    OutputChannelType.VIDEO_INPUT_SOURCE: ChannelSpec(
+        name="videoInputSource", min_value=0, max_value=255, resolution=1,
     ),
 }
 

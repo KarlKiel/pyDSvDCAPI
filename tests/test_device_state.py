@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.device_state import DeviceState
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup, OutputFunction, OutputUsage
+from pydsvdcapi.enums import ColorClass, ColorGroup, OutputFunction, OutputUsage
 from pydsvdcapi.output import Output
-from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.property_handling import NO_VALUE, elements_to_dict
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import VdcHost
@@ -57,8 +57,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "State Test vdSD",
+        "model": "Test State vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -185,7 +186,7 @@ class TestDeviceStateDescriptionProperties:
         )
         desc = st.get_description_properties()
         assert desc["name"] == "test"
-        assert desc["options"] == {"0": "Off", "1": "On"}
+        assert desc["value"] == {"values": {"Off": NO_VALUE, "On": NO_VALUE}}
         assert "description" not in desc
 
     def test_with_description(self):
@@ -203,7 +204,7 @@ class TestDeviceStateDescriptionProperties:
         st = DeviceState(vdsd=vdsd, ds_index=0, name="test")
         desc = st.get_description_properties()
         assert desc["name"] == "test"
-        assert desc["options"] == {}
+        assert desc["value"] == {"values": {}}
 
 
 # ===========================================================================
@@ -431,15 +432,15 @@ class TestVdsdDeviceStateProperties:
         assert "deviceStates" in props
 
         desc = props["deviceStateDescriptions"]
-        assert "0" in desc
-        assert desc["0"]["name"] == "opState"
-        assert desc["0"]["description"] == "Operating state"
-        assert desc["0"]["options"] == {"0": "Off", "1": "On"}
+        assert "opState" in desc
+        assert desc["opState"]["name"] == "opState"
+        assert desc["opState"]["description"] == "Operating state"
+        assert desc["opState"]["value"] == {"values": {"Off": NO_VALUE, "On": NO_VALUE}}
 
         states = props["deviceStates"]
-        assert "0" in states
-        assert states["0"]["name"] == "opState"
-        assert states["0"]["value"] is None  # no value set yet
+        assert "opState" in states
+        assert states["opState"]["name"] == "opState"
+        assert states["opState"]["value"] is None  # no value set yet
 
     def test_with_value_set(self):
         _, _, _, vdsd = _make_stack()
@@ -452,7 +453,7 @@ class TestVdsdDeviceStateProperties:
 
         props = vdsd.get_properties()
         # Value is now the string label, not the integer key.
-        assert props["deviceStates"]["0"]["value"] == "On"
+        assert props["deviceStates"]["opState"]["value"] == "On"
 
 
 # ===========================================================================

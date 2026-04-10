@@ -7,9 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import (
+    ColorClass,
     ColorGroup,
     HeatingSystemCapability,
     HeatingSystemType,
@@ -61,8 +62,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Output Test vdSD",
+        "model": "Test Output vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -74,6 +76,9 @@ def _make_output(vdsd: Vdsd, **kwargs: Any) -> Output:
         "function": OutputFunction.DIMMER,
         "output_usage": OutputUsage.ROOM,
         "name": "Test Dimmer",
+        "default_group": 1,
+        "active_group": 1,
+        "groups": {1},
     }
     defaults.update(kwargs)
     return Output(**defaults)
@@ -112,7 +117,7 @@ class TestOutputConstruction:
         assert out.function == OutputFunction.DIMMER
         assert out.output_usage == OutputUsage.ROOM
         assert out.name == "Test Dimmer"
-        assert out.default_group == 0
+        assert out.default_group == 1
         assert out.variable_ramp is False
         assert out.max_power is None
         assert out.active_cooling_mode is None
@@ -123,8 +128,8 @@ class TestOutputConstruction:
         out = _make_output(vdsd)
 
         assert out.mode == OutputMode.DEFAULT
-        assert out.active_group == 0
-        assert out.groups == set()
+        assert out.active_group == 1
+        assert out.groups == {1}
         assert out.push_changes is False
         assert out.on_threshold is None
         assert out.min_brightness is None
@@ -202,6 +207,10 @@ class TestOutputConstruction:
             mode=2,  # GRADUAL
             heating_system_capability=1,  # HEATING_ONLY
             heating_system_type=3,  # WALL_HEATING
+            name="test",
+            default_group=1,
+            active_group=1,
+            groups={1},
         )
 
         assert out.function == OutputFunction.DIMMER
@@ -213,19 +222,19 @@ class TestOutputConstruction:
     def test_all_output_functions(self):
         host, vdc, device, vdsd = _make_stack()
         for func in OutputFunction:
-            out = Output(vdsd=vdsd, function=func)
+            out = Output(vdsd=vdsd, function=func, name="test", default_group=1, active_group=1, groups={1})
             assert out.function == func
 
     def test_all_output_modes(self):
         host, vdc, device, vdsd = _make_stack()
         for mode in OutputMode:
-            out = Output(vdsd=vdsd, mode=mode)
+            out = Output(vdsd=vdsd, mode=mode, name="test", default_group=1, active_group=1, groups={1})
             assert out.mode == mode
 
     def test_all_output_usages(self):
         host, vdc, device, vdsd = _make_stack()
         for usage in OutputUsage:
-            out = Output(vdsd=vdsd, output_usage=usage)
+            out = Output(vdsd=vdsd, output_usage=usage, name="test", default_group=1, active_group=1, groups={1})
             assert out.output_usage == usage
 
 
@@ -287,7 +296,7 @@ class TestOutputSettingsMutators:
 
     def test_add_group(self):
         host, vdc, device, vdsd = _make_stack()
-        out = _make_output(vdsd)
+        out = _make_output(vdsd, groups=set())
         out.add_group(7)
         out.add_group(12)
         assert out.groups == {7, 12}
@@ -449,7 +458,7 @@ class TestOutputDescriptionProperties:
         assert desc["function"] == int(OutputFunction.DIMMER)
         assert desc["outputUsage"] == int(OutputUsage.ROOM)
         assert desc["name"] == "Test Dimmer"
-        assert desc["defaultGroup"] == 0
+        assert desc["defaultGroup"] == 1
         assert desc["variableRamp"] is False
         assert "maxPower" not in desc
         assert "activeCoolingMode" not in desc
@@ -463,6 +472,9 @@ class TestOutputDescriptionProperties:
             active_cooling_mode=True,
             variable_ramp=True,
             default_group=8,
+            name="optional-test",
+            active_group=1,
+            groups={1},
         )
         desc = out.get_description_properties()
 
@@ -486,9 +498,9 @@ class TestOutputSettingsProperties:
         settings = out.get_settings_properties()
 
         assert settings["mode"] == int(OutputMode.DEFAULT)
-        assert settings["activeGroup"] == 0
+        assert settings["activeGroup"] == 1
         assert settings["pushChanges"] is False
-        assert settings["groups"] == {}
+        assert settings["groups"] == {"1": True}
         assert "onThreshold" not in settings
         assert "minBrightness" not in settings
 
@@ -507,6 +519,9 @@ class TestOutputSettingsProperties:
             function=OutputFunction.DIMMER,
             mode=OutputMode.GRADUAL,
             active_group=2,
+            name="settings-test",
+            default_group=1,
+            groups={2},
             push_changes=True,
             on_threshold=50.0,
             min_brightness=5.0,
@@ -757,14 +772,14 @@ class TestOutputPropertyTree:
         assert tree["function"] == int(OutputFunction.DIMMER)
         assert tree["outputUsage"] == int(OutputUsage.ROOM)
         assert tree["name"] == "Test Dimmer"
-        assert tree["defaultGroup"] == 0
+        assert tree["defaultGroup"] == 1
         assert tree["variableRamp"] is False
         assert tree["mode"] == int(OutputMode.DEFAULT)
-        assert tree["activeGroup"] == 0
+        assert tree["activeGroup"] == 1
         assert tree["pushChanges"] is False
         assert "maxPower" not in tree
         assert "activeCoolingMode" not in tree
-        assert "groups" not in tree
+        assert tree["groups"] == [1]
 
     def test_full_tree(self):
         host, vdc, device, vdsd = _make_stack()
@@ -861,7 +876,7 @@ class TestOutputPropertyTree:
         tree = original.get_property_tree()
 
         # Restore into a fresh Output.
-        restored = Output(vdsd=vdsd)
+        restored = Output(vdsd=vdsd, name="restored", default_group=0, active_group=0, groups=set())
         restored._apply_state(tree)
 
         assert restored.function == original.function
@@ -896,7 +911,7 @@ class TestOutputPropertyTree:
     def test_apply_state_groups_from_dict(self):
         """_apply_state also handles groups in dict format."""
         host, vdc, device, vdsd = _make_stack()
-        out = Output(vdsd=vdsd)
+        out = Output(vdsd=vdsd, name="tmp", default_group=0, active_group=0, groups=set())
         out._apply_state({"groups": {"1": True, "5": True, "10": False}})
         assert out.groups == {1, 5}
 
@@ -908,6 +923,9 @@ class TestOutputPropertyTree:
             function=OutputFunction.DIMMER,
             name="Original",
             mode=OutputMode.GRADUAL,
+            default_group=1,
+            active_group=1,
+            groups={1},
         )
         out._apply_state({"name": "Changed"})
         assert out.name == "Changed"
@@ -943,10 +961,10 @@ class TestVdsdOutputIntegration:
             vdc=vdc,
             dsuid=DsUid.from_name_in_space("other", DsUidNamespace.VDC),
         )
-        other_vdsd = Vdsd(device=other_device, name="Other")
+        other_vdsd = Vdsd(device=other_device, primary_group=ColorClass.BLACK, name="Other", model="Test")
         other_device.add_vdsd(other_vdsd)
 
-        out = Output(vdsd=other_vdsd)
+        out = Output(vdsd=other_vdsd, name="out", default_group=1, active_group=1, groups={1})
         with pytest.raises(ValueError, match="different vdSD"):
             vdsd.set_output(out)
 
@@ -1008,6 +1026,7 @@ class TestVdsdOutputIntegration:
             function=OutputFunction.POSITIONAL,
             name="Blind Motor",
             mode=OutputMode.GRADUAL,
+            default_group=9,
             active_group=9,
             groups={9},
         )
@@ -1029,7 +1048,7 @@ class TestVdsdOutputIntegration:
     def test_output_restore_merges_with_existing(self):
         """If output already exists, _apply_state updates it."""
         host, vdc, device, vdsd = _make_stack()
-        existing = Output(vdsd=vdsd, name="Existing")
+        existing = Output(vdsd=vdsd, name="Existing", default_group=1, active_group=1, groups={1})
         vdsd.set_output(existing)
 
         vdsd._apply_state({
@@ -1302,13 +1321,13 @@ class TestOutputEdgeCases:
 
     def test_empty_groups_returns_empty_dict(self):
         host, vdc, device, vdsd = _make_stack()
-        out = _make_output(vdsd)
+        out = _make_output(vdsd, groups=set())
         settings = out.get_settings_properties()
         assert settings["groups"] == {}
 
     def test_empty_groups_not_in_tree(self):
         host, vdc, device, vdsd = _make_stack()
-        out = _make_output(vdsd)
+        out = _make_output(vdsd, groups=set())
         tree = out.get_property_tree()
         assert "groups" not in tree
 
@@ -1333,6 +1352,9 @@ class TestOutputEdgeCases:
             function=OutputFunction.ON_OFF,
             mode=OutputMode.BINARY,
             name="Relay",
+            default_group=1,
+            active_group=1,
+            groups={1},
         )
         assert out.function == OutputFunction.ON_OFF
         assert out.mode == OutputMode.BINARY
@@ -1344,6 +1366,9 @@ class TestOutputEdgeCases:
             vdsd=vdsd,
             function=OutputFunction.BIPOLAR,
             name="Ventilation",
+            default_group=1,
+            active_group=1,
+            groups={1},
         )
         assert out.function == OutputFunction.BIPOLAR
 
@@ -1353,6 +1378,9 @@ class TestOutputEdgeCases:
             vdsd=vdsd,
             function=OutputFunction.INTERNALLY_CONTROLLED,
             name="Auto",
+            default_group=1,
+            active_group=1,
+            groups={1},
         )
         assert out.function == OutputFunction.INTERNALLY_CONTROLLED
 
@@ -1363,6 +1391,9 @@ class TestOutputEdgeCases:
             vdsd=vdsd,
             function=OutputFunction.ON_OFF,
             name="FCU Valve",
+            default_group=1,
+            active_group=1,
+            groups={1},
             heating_system_capability=HeatingSystemCapability.HEATING_AND_COOLING,
             heating_system_type=HeatingSystemType.CONVECTOR_PASSIVE,
             active_cooling_mode=True,
@@ -2297,7 +2328,7 @@ class TestSceneZoneGroupFiltering:
     """Tests for zone/group filtering in VdcHost scene dispatch."""
 
     def _make_registered_stack(
-        self, *, zone_id=0, primary_group=ColorGroup.YELLOW,
+        self, *, zone_id=0, primary_group=ColorClass.YELLOW,
         active_group=None, groups=None,
     ):
         host = _make_host()
@@ -2329,7 +2360,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_matching_group_applies(self):
         """callScene with matching group applies the scene."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2350,7 +2381,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_wrong_group_skips(self):
         """callScene with non-matching group skips the device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2371,7 +2402,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_wrong_zone_skips(self):
         """callScene with non-matching zone skips the device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2392,7 +2423,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_zero_group_matches_all(self):
         """group=0 means 'not specified' and matches any device."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(50.0)
@@ -2412,7 +2443,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_scene_secondary_group_matches(self):
         """callScene matches if group is in output.groups (secondary)."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
             groups={int(ColorGroup.GREY)},
         )
         ch = out.get_channel(0)
@@ -2436,7 +2467,7 @@ class TestSceneZoneGroupFiltering:
     async def test_save_scene_matching_group_saves(self):
         """saveScene with matching group saves the scene."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(77.0)
@@ -2459,7 +2490,7 @@ class TestSceneZoneGroupFiltering:
     async def test_save_scene_wrong_group_skips(self):
         """saveScene with non-matching group doesn't save."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(77.0)
@@ -2488,7 +2519,7 @@ class TestSceneZoneGroupFiltering:
     async def test_undo_scene_matching_group_undoes(self):
         """undoScene with matching group and matching scene undoes."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(42.0)
@@ -2519,7 +2550,7 @@ class TestSceneZoneGroupFiltering:
     async def test_undo_scene_wrong_group_no_undo(self):
         """undoScene with different group does not undo."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
             groups={int(ColorGroup.GREY)},
         )
         ch = out.get_channel(0)
@@ -2553,7 +2584,7 @@ class TestSceneZoneGroupFiltering:
     async def test_set_local_priority_matching_group(self):
         """setLocalPriority with matching group sets LP."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         assert out.local_priority is False
 
@@ -2572,7 +2603,7 @@ class TestSceneZoneGroupFiltering:
     async def test_set_local_priority_wrong_group_skips(self):
         """setLocalPriority with non-matching group does not set LP."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         assert out.local_priority is False
 
@@ -2593,7 +2624,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_min_scene_matching_group_applies(self):
         """callMinScene with matching group sets min-on."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(0.0)
@@ -2614,7 +2645,7 @@ class TestSceneZoneGroupFiltering:
     async def test_call_min_scene_wrong_zone_skips(self):
         """callMinScene with non-matching zone does not act."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(0.0)
@@ -2638,7 +2669,7 @@ class TestSceneZoneGroupFiltering:
         """Full roundtrip: callScene dispatch stores group-keyed undo
         that can only be undone with the same group."""
         host, _, _, vdsd, out = self._make_registered_stack(
-            zone_id=10, primary_group=ColorGroup.YELLOW,
+            zone_id=10, primary_group=ColorClass.YELLOW,
         )
         ch = out.get_channel(0)
         ch.set_value_from_vdsm(55.0)
@@ -2713,9 +2744,9 @@ class TestMatchesZoneAndGroup:
         """primary_group on vdsd is NOT used — only active_group matters."""
         host = _make_host()
         _, _, _, vdsd = _make_stack(
-            primary_group=ColorGroup.YELLOW, zone_id=42,
+            primary_group=ColorClass.YELLOW, zone_id=42,
         )
-        out = _make_output(vdsd, function=OutputFunction.DIMMER)
+        out = _make_output(vdsd, function=OutputFunction.DIMMER, groups=set())
         out.active_group = int(ColorGroup.GREY)  # different from primary
         assert host._matches_zone_and_group(
             vdsd, out, 42, int(ColorGroup.YELLOW)

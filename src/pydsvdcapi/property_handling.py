@@ -38,7 +38,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
+from pydsvdcapi.vdcapi_pb2 import PropertyElement as _PropertyElement, PropertyValue as _PropertyValue
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +80,7 @@ NO_VALUE: _NoValue = _NoValue()
 # Python value → PropertyValue
 # ---------------------------------------------------------------------------
 
-def _to_property_value(value: Any) -> Optional[pb.PropertyValue]:
+def _to_property_value(value: Any) -> Optional[_PropertyValue]:
     """Convert a Python value to a :class:`PropertyValue` protobuf.
 
     Returns ``None`` when *value* is :data:`NO_VALUE`, a ``dict``
@@ -91,9 +92,9 @@ def _to_property_value(value: Any) -> Optional[pb.PropertyValue]:
 
     if value is None:
         # Explicit NULL — an empty PropertyValue with no fields set.
-        return pb.PropertyValue()
+        return _PropertyValue()
 
-    pv = pb.PropertyValue()
+    pv = _PropertyValue()
     # bool must be checked before int (bool is a subclass of int).
     if isinstance(value, bool):
         pv.v_bool = value
@@ -122,14 +123,14 @@ def _to_property_value(value: Any) -> Optional[pb.PropertyValue]:
 
 def dict_to_elements(
     properties: Dict[str, Any],
-) -> List[pb.PropertyElement]:
+) -> List[_PropertyElement]:
     """Convert a Python dict to a list of ``PropertyElement`` messages.
 
     Nested dicts become sub-elements; scalars become values.
     """
-    elements: List[pb.PropertyElement] = []
+    elements: List[_PropertyElement] = []
     for key, val in properties.items():
-        elem = pb.PropertyElement()
+        elem = _PropertyElement()
         elem.name = str(key)
         if val is NO_VALUE:
             # Name-only PropertyElement — no value or sub-elements.
@@ -152,7 +153,7 @@ def dict_to_elements(
 def match_query(
     properties: Dict[str, Any],
     query: Any,
-) -> List[pb.PropertyElement]:
+) -> List[_PropertyElement]:
     """Match an incoming property *query* against *properties*.
 
     Parameters
@@ -172,7 +173,7 @@ def match_query(
         silently dropped.  Wildcard queries (empty ``name``) expand
         to all available properties on that level.
     """
-    result: List[pb.PropertyElement] = []
+    result: List[_PropertyElement] = []
 
     for q_elem in query:
         name = q_elem.name
@@ -180,7 +181,7 @@ def match_query(
         if not name:
             # Wildcard — return everything at this level.
             for k, v in properties.items():
-                elem = pb.PropertyElement()
+                elem = _PropertyElement()
                 elem.name = k
                 if isinstance(v, dict):
                     # If the wildcard has sub-elements, apply them.
@@ -198,7 +199,7 @@ def match_query(
                 result.append(elem)
         elif name in properties:
             val = properties[name]
-            elem = pb.PropertyElement()
+            elem = _PropertyElement()
             elem.name = name
 
             if isinstance(val, dict):
@@ -268,7 +269,7 @@ def build_get_property_response(
 # setProperty helpers
 # ---------------------------------------------------------------------------
 
-def _extract_value(pv: pb.PropertyValue) -> Any:
+def _extract_value(pv: _PropertyValue) -> Any:
     """Extract a Python value from a ``PropertyValue`` message.
 
     Returns ``None`` if no field is set (explicit NULL).

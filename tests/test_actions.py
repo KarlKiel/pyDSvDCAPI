@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
+from pydsvdcapi.vdcapi_pb2 import PropertyElement, PropertyValue
 from pydsvdcapi.actions import (
     ActionParameter,
     CustomAction,
@@ -17,7 +18,7 @@ from pydsvdcapi.actions import (
     StandardAction,
 )
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup
+from pydsvdcapi.enums import ColorClass, ColorGroup
 from pydsvdcapi.property_handling import elements_to_dict
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
@@ -62,8 +63,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Action Test vdSD",
+        "model": "Test Action vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -632,7 +634,7 @@ class TestGetPropertiesActions:
         assert "deviceActionDescriptions" in props
         assert "standardActions" in props
         assert "customActions" in props
-        assert "dynamicDeviceActions" in props
+        assert "dynamicActionDescriptions" in props
 
     def test_action_descriptions_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -644,10 +646,10 @@ class TestGetPropertiesActions:
         vdsd.add_device_action_description(desc)
         props = vdsd.get_properties()
         ad = props["deviceActionDescriptions"]
-        assert "0" in ad
-        assert ad["0"]["name"] == "play"
-        assert ad["0"]["description"] == "Play"
-        assert "vol" in ad["0"]["params"]
+        assert "play" in ad
+        assert ad["play"]["name"] == "play"
+        assert ad["play"]["description"] == "Play"
+        assert "vol" in ad["play"]["params"]
 
     def test_standard_actions_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -660,10 +662,10 @@ class TestGetPropertiesActions:
         vdsd.add_standard_action(std)
         props = vdsd.get_properties()
         sa = props["standardActions"]
-        assert "0" in sa
-        assert sa["0"]["name"] == "std.play"
-        assert sa["0"]["action"] == "play"
-        assert sa["0"]["params"] == {"volume": 80}
+        assert "std.play" in sa
+        assert sa["std.play"]["name"] == "std.play"
+        assert sa["std.play"]["action"] == "play"
+        assert sa["std.play"]["params"] == {"volume": 80}
 
     def test_custom_actions_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -676,9 +678,9 @@ class TestGetPropertiesActions:
         vdsd.add_custom_action(cust)
         props = vdsd.get_properties()
         ca = props["customActions"]
-        assert "0" in ca
-        assert ca["0"]["name"] == "custom.loud"
-        assert ca["0"]["title"] == "Loud"
+        assert "custom.loud" in ca
+        assert ca["custom.loud"]["name"] == "custom.loud"
+        assert ca["custom.loud"]["title"] == "Loud"
 
     def test_dynamic_actions_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -689,10 +691,10 @@ class TestGetPropertiesActions:
         )
         vdsd.add_dynamic_action(dyn)
         props = vdsd.get_properties()
-        da = props["dynamicDeviceActions"]
-        assert "0" in da
-        assert da["0"]["name"] == "dynamic.x"
-        assert da["0"]["title"] == "X"
+        da = props["dynamicActionDescriptions"]
+        assert "dynamic.x" in da
+        assert da["dynamic.x"]["name"] == "dynamic.x"
+        assert da["dynamic.x"]["title"] == "X"
 
     def test_empty_containers_when_only_states(self):
         """With only states defined, action containers should be empty."""
@@ -708,7 +710,7 @@ class TestGetPropertiesActions:
         assert props["deviceActionDescriptions"] == {}
         assert props["standardActions"] == {}
         assert props["customActions"] == {}
-        assert props["dynamicDeviceActions"] == {}
+        assert props["dynamicActionDescriptions"] == {}
 
     def test_no_single_device_without_features(self):
         """Without any SingleDevice feature, action containers absent."""
@@ -717,7 +719,7 @@ class TestGetPropertiesActions:
         assert "deviceActionDescriptions" not in props
         assert "standardActions" not in props
         assert "customActions" not in props
-        assert "dynamicDeviceActions" not in props
+        assert "dynamicActionDescriptions" not in props
 
 
 # ===========================================================================
@@ -918,7 +920,7 @@ class TestVdcHostGenericRequest:
         msg.vdsm_request_generic_request.methodname = "invokeDeviceAction"
 
         # Add 'id' param.
-        id_elem = pb.PropertyElement()
+        id_elem = PropertyElement()
         id_elem.name = "id"
         id_elem.value.v_string = action_id
         msg.vdsm_request_generic_request.params.append(id_elem)
@@ -926,7 +928,7 @@ class TestVdcHostGenericRequest:
         # Add any extra params.
         if params:
             for k, v in params.items():
-                pe = pb.PropertyElement()
+                pe = PropertyElement()
                 pe.name = k
                 if isinstance(v, str):
                     pe.value.v_string = v

@@ -39,7 +39,7 @@ from typing import Any, Awaitable, Callable, ClassVar, Dict, Optional, Union
 from zeroconf import ServiceInfo
 from zeroconf.asyncio import AsyncZeroconf
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.connection import VdcConnection
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.persistence import PropertyStore
@@ -355,6 +355,8 @@ class VdcHost:
                     vdc = Vdc(
                         host=self,
                         implementation_id=impl_id,
+                        name=vdc_state.get("name") or impl_id,
+                        model=vdc_state.get("model") or "Restored vDC",
                     )
                     vdc._apply_state(vdc_state)
                     self._vdcs[str(vdc.dsuid)] = vdc
@@ -1142,8 +1144,28 @@ class VdcHost:
             len(msg.vdsm_request_get_property.query),
             query_names,
         )
+        # DIAG: show sub-element count for each query element
+        for q in msg.vdsm_request_get_property.query:
+            if q.name in ("modelFeatures", "sensorDescriptions", "binaryInputDescriptions"):
+                logger.info(
+                    "[DIAG] query '%s' sub-elements: %d → %s",
+                    q.name, len(q.elements),
+                    [e.name for e in q.elements],
+                )
+                if q.name in ("modelFeatures",):
+                    logger.info("[DIAG] props['modelFeatures'] = %r", props.get("modelFeatures"))
 
         resp = build_get_property_response(msg, props)
+
+        # DIAG: show what we returned for diagnostic query elements
+        for p in resp.vdc_response_get_property.properties:
+            if p.name in ("modelFeatures", "sensorDescriptions", "binaryInputDescriptions"):
+                logger.info(
+                    "[DIAG] response '%s': sub-elements=%d → %s",
+                    p.name,
+                    len(p.elements),
+                    [(e.name, len(e.elements), str(e.value)[:40] if e.HasField("value") else "-") for e in p.elements],
+                )
 
         return resp
 
@@ -1325,6 +1347,48 @@ class VdcHost:
                                 "vdSD '%s' customActions[%d] updated",
                                 vdsd.dsuid, idx,
                             )
+        # Channel states (§4.9.3) — dSS sends this via setProperty when
+        # the user or JSON API sets an output channel value directly
+        # (setVdcDeviceOutputChannelValues path).  Each child element is
+        # named by the channel name string (e.g. "brightness") and
+        # contains a "value" child with the new double.
+        if "channelStates" in incoming:
+            ch_states = incoming["channelStates"]
+            if isinstance(ch_states, dict):
+                output = getattr(vdsd, "output", None)
+                if output is not None:
+                    for ch_name, ch_data in ch_states.items():
+                        if not isinstance(ch_data, dict):
+                            continue
+                        new_val = ch_data.get("value")
+                        if new_val is None:
+                            continue
+                        # Locate channel by name.
+                        channel_obj = None
+                        for ch in output.channels.values():
+                            if ch.name == ch_name:
+                                channel_obj = ch
+                                break
+                        if channel_obj is None:
+                            logger.warning(
+                                "setProperty channelStates: channel '%s' "
+                                "not found on vdSD %s",
+                                ch_name, vdsd.dsuid,
+                            )
+                            continue
+                        output.buffer_channel_value(channel_obj, float(new_val))
+                        logger.debug(
+                            "setProperty channelStates: vdSD %s ch='%s' "
+                            "val=%s (buffered)",
+                            vdsd.dsuid, ch_name, new_val,
+                        )
+                    # apply_pending_channels is async; schedule it.
+                    import asyncio
+                    asyncio.ensure_future(output.apply_pending_channels())
+                    logger.info(
+                        "vdSD '%s' channelStates updated via setProperty",
+                        vdsd.dsuid,
+                    )
         # Scene settings (§4.1.4 / §4.10).
         if "scenes" in incoming:
             scene_data = incoming["scenes"]

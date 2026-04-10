@@ -467,6 +467,11 @@ class OutputChannel:
         """Resolution (smallest distinguishable step)."""
         return self._resolution
 
+    @resolution.setter
+    def resolution(self, value: float) -> None:
+        """Override the reported resolution."""
+        self._resolution = float(value)
+
     # ==================================================================
     # Volatile state accessors
     # ==================================================================

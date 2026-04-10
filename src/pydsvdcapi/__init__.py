@@ -20,6 +20,7 @@ from pydsvdcapi.enums import (  # noqa: F401 – re-export for convenience
     ButtonMode,
     ButtonType,
     ClimateDeviceScene,
+    ColorClass,
     ColorGroup,
     DeviceScene,
     EntityType,

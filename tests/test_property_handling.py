@@ -6,7 +6,8 @@ from typing import Any, Dict
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
+from pydsvdcapi.vdcapi_pb2 import PropertyElement, PropertyValue
 from pydsvdcapi.property_handling import (
     build_get_property_response,
     dict_to_elements,
@@ -37,7 +38,7 @@ SAMPLE_PROPERTIES: Dict[str, Any] = {
 
 def _make_query(*names: str) -> list:
     """Build a simple flat query with the given property names."""
-    return [pb.PropertyElement(name=n) for n in names]
+    return [PropertyElement(name=n) for n in names]
 
 
 # ---------------------------------------------------------------------------
@@ -164,17 +165,17 @@ class TestElementsToDict:
 
     def test_simple_values(self):
         elems = [
-            pb.PropertyElement(
+            PropertyElement(
                 name="name",
-                value=pb.PropertyValue(v_string="TestName"),
+                value=PropertyValue(v_string="TestName"),
             ),
-            pb.PropertyElement(
+            PropertyElement(
                 name="zoneID",
-                value=pb.PropertyValue(v_int64=42),
+                value=PropertyValue(v_int64=42),
             ),
-            pb.PropertyElement(
+            PropertyElement(
                 name="active",
-                value=pb.PropertyValue(v_bool=True),
+                value=PropertyValue(v_bool=True),
             ),
         ]
         d = elements_to_dict(elems)
@@ -182,12 +183,12 @@ class TestElementsToDict:
 
     def test_nested(self):
         elems = [
-            pb.PropertyElement(
+            PropertyElement(
                 name="caps",
                 elements=[
-                    pb.PropertyElement(
+                    PropertyElement(
                         name="metering",
-                        value=pb.PropertyValue(v_bool=False),
+                        value=PropertyValue(v_bool=False),
                     ),
                 ],
             ),
@@ -203,8 +204,8 @@ class TestElementsToDict:
         setProperty handler can expand them.
         """
         elems = [
-            pb.PropertyElement(
-                name="", value=pb.PropertyValue(v_string="x")
+            PropertyElement(
+                name="", value=PropertyValue(v_string="x")
             ),
         ]
         d = elements_to_dict(elems)
@@ -251,9 +252,9 @@ class TestMatchQuery:
 
     def test_nested_property_direct(self):
         query = [
-            pb.PropertyElement(
+            PropertyElement(
                 name="capabilities",
-                elements=[pb.PropertyElement(name="metering")],
+                elements=[PropertyElement(name="metering")],
             )
         ]
         result = match_query(SAMPLE_PROPERTIES, query)
@@ -266,9 +267,9 @@ class TestMatchQuery:
 
     def test_nested_wildcard(self):
         query = [
-            pb.PropertyElement(
+            PropertyElement(
                 name="capabilities",
-                elements=[pb.PropertyElement(name="")],
+                elements=[PropertyElement(name="")],
             )
         ]
         result = match_query(SAMPLE_PROPERTIES, query)
@@ -422,6 +423,7 @@ class TestVdcHostPropertyDispatch:
             host=host,
             implementation_id="x-test-prop",
             name="PropTest vDC",
+            model="PropTest v1",
         )
         host.add_vdc(vdc)
         host._cancel_auto_save()
@@ -470,6 +472,7 @@ class TestVdcHostPropertyDispatch:
             host=host,
             implementation_id="x-test-set",
             name="SetTest vDC",
+            model="SetTest v1",
         )
         host.add_vdc(vdc)
         host._cancel_auto_save()
@@ -599,13 +602,13 @@ class TestExpandSetpropertyWildcards:
     def test_round_trip_with_elements_to_dict(self):
         """A protobuf wildcard element is preserved and expandable."""
         # Simulate a setProperty with a wildcard: scenes { "" { dontCare: true } }
-        inner = pb.PropertyElement(
+        inner = PropertyElement(
             name="dontCare",
-            value=pb.PropertyValue(v_bool=True),
+            value=PropertyValue(v_bool=True),
         )
-        wildcard = pb.PropertyElement(name="")
+        wildcard = PropertyElement(name="")
         wildcard.elements.append(inner)
-        scenes = pb.PropertyElement(name="scenes")
+        scenes = PropertyElement(name="scenes")
         scenes.elements.append(wildcard)
 
         d = elements_to_dict([scenes])

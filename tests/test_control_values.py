@@ -8,9 +8,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup, OutputFunction, OutputUsage
+from pydsvdcapi.enums import ColorClass, ColorGroup, OutputFunction, OutputUsage
 from pydsvdcapi.output import Output
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
@@ -53,8 +53,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "CV Test vdSD",
+        "model": "Test CV vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -66,6 +67,9 @@ def _make_output(vdsd: Vdsd, **kwargs: Any) -> Output:
         "function": OutputFunction.DIMMER,
         "output_usage": OutputUsage.ROOM,
         "name": "Test Dimmer",
+        "default_group": 1,
+        "active_group": 1,
+        "groups": {1},
     }
     defaults.update(kwargs)
     return Output(**defaults)

@@ -84,7 +84,7 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.conversion import apply_converter, compile_converter
 from pydsvdcapi.enums import InputError, SensorType, SensorUsage
 from pydsvdcapi.property_handling import dict_to_elements
@@ -113,7 +113,9 @@ class SensorInput:
         Must be unique within the device.
     sensor_type:
         The physical quantity the sensor measures (see
-        :class:`~pydsvdcapi.enums.SensorType`).
+        :class:`~pydsvdcapi.enums.SensorType`).  **Required** — always
+        provide an explicit type; ``SensorType.NONE`` is not a valid
+        choice for a deployed sensor.
     sensor_usage:
         Usage context beyond the device colour group.
     group:
@@ -121,11 +123,14 @@ class SensorInput:
     name:
         Human-readable name or label for this sensor.
     min_value:
-        Minimum value the sensor can report.
+        Minimum value the sensor can report.  **Required** — the API
+        does not define a useful default; always specify this.
     max_value:
-        Maximum value the sensor can report.
+        Maximum value the sensor can report.  **Required** — same
+        rationale as *min_value*.
     resolution:
         LSB size / resolution of the actual hardware sensor.
+        **Required** — a value of ``0.0`` carries no useful information.
     update_interval:
         How fast the physical value is tracked, in seconds.
         ``0.0`` means "on change only" (instantaneous).
@@ -146,18 +151,51 @@ class SensorInput:
         self,
         *,
         vdsd: Vdsd,
+        sensor_type: SensorType,
+        min_value: float,
+        max_value: float,
+        resolution: float,
         ds_index: int = 0,
-        sensor_type: SensorType = SensorType.NONE,
         sensor_usage: SensorUsage = SensorUsage.UNDEFINED,
         group: int = 0,
         name: str = "",
-        min_value: float = 0.0,
-        max_value: float = 0.0,
-        resolution: float = 0.0,
         update_interval: float = 0.0,
         alive_sign_interval: float = 0.0,
         min_push_interval: float = 2.0,
         changes_only_interval: float = 0.0,
+    ) -> None:
+        self._init(
+            vdsd=vdsd,
+            ds_index=ds_index,
+            sensor_type=sensor_type,
+            sensor_usage=sensor_usage,
+            group=group,
+            name=name,
+            min_value=min_value,
+            max_value=max_value,
+            resolution=resolution,
+            update_interval=update_interval,
+            alive_sign_interval=alive_sign_interval,
+            min_push_interval=min_push_interval,
+            changes_only_interval=changes_only_interval,
+        )
+
+    def _init(
+        self,
+        *,
+        vdsd: Vdsd,
+        ds_index: int,
+        sensor_type: SensorType,
+        sensor_usage: SensorUsage,
+        group: int,
+        name: str,
+        min_value: float,
+        max_value: float,
+        resolution: float,
+        update_interval: float,
+        alive_sign_interval: float,
+        min_push_interval: float,
+        changes_only_interval: float,
     ) -> None:
         # ---- parent reference ----------------------------------------
         self._vdsd: Vdsd = vdsd
@@ -197,6 +235,33 @@ class SensorInput:
         # ---- value converter (optional, persisted) -------------------
         self._uplink_converter_code: Optional[str] = None
         self._uplink_converter_fn: Optional[Callable[[Any], Any]] = None
+
+    @classmethod
+    def _restore(cls, *, vdsd: "Vdsd", ds_index: int) -> "SensorInput":
+        """Create a bare instance for persistence restoration.
+
+        Intended for **internal use only** by the persistence layer.
+        The caller **must** immediately call ``_apply_state()`` to fill
+        in the description fields (sensor_type, min, max, resolution, …)
+        before the object is used in any other way.
+        """
+        inst: SensorInput = cls.__new__(cls)
+        inst._init(
+            vdsd=vdsd,
+            ds_index=ds_index,
+            sensor_type=SensorType.NONE,
+            sensor_usage=SensorUsage.UNDEFINED,
+            group=0,
+            name="",
+            min_value=0.0,
+            max_value=0.0,
+            resolution=0.0,
+            update_interval=0.0,
+            alive_sign_interval=0.0,
+            min_push_interval=2.0,
+            changes_only_interval=0.0,
+        )
+        return inst
 
     # ---- converter management ---------------------------------------
 

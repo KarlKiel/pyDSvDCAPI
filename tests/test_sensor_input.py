@@ -9,9 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import (
+    ColorClass,
     ColorGroup,
     InputError,
     SensorType,
@@ -60,8 +61,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.BLACK,
+        "primary_group": ColorClass.BLACK,
         "name": "SI Test vdSD",
+        "model": "Test SI vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -862,7 +864,7 @@ class TestSensorInputPersistence:
         vdc = _make_vdc(host)
         device = _make_device(vdc)
         vdsd = _make_vdsd(device)
-        si = SensorInput(vdsd=vdsd, ds_index=0)
+        si = SensorInput._restore(vdsd=vdsd, ds_index=0)
 
         si._apply_state({
             "dsIndex": 3,
@@ -917,7 +919,7 @@ class TestSensorInputPersistence:
 
         tree = original.get_property_tree()
 
-        restored = SensorInput(vdsd=vdsd, ds_index=99)
+        restored = SensorInput._restore(vdsd=vdsd, ds_index=99)
         restored._apply_state(tree)
 
         assert restored.ds_index == original.ds_index

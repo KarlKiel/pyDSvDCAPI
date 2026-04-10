@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.device_property import (
     PROPERTY_TYPE_ENUMERATION,
     PROPERTY_TYPE_NUMERIC,
@@ -17,9 +17,9 @@ from pydsvdcapi.device_property import (
     DeviceProperty,
 )
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup, OutputFunction, OutputUsage
+from pydsvdcapi.enums import ColorClass, ColorGroup, OutputFunction, OutputUsage
 from pydsvdcapi.output import Output
-from pydsvdcapi.property_handling import elements_to_dict
+from pydsvdcapi.property_handling import NO_VALUE, elements_to_dict
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import VdcHost
@@ -63,8 +63,9 @@ def _make_device(vdc: Vdc, dsuid: Optional[DsUid] = None) -> Device:
 def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
     defaults: dict[str, Any] = {
         "device": device,
-        "primary_group": ColorGroup.YELLOW,
+        "primary_group": ColorClass.YELLOW,
         "name": "Prop Test vdSD",
+        "model": "Test Prop vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -253,7 +254,7 @@ class TestDevicePropertyDescriptionProperties:
         assert "max" not in desc
         assert "resolution" not in desc
         assert "siunit" not in desc
-        assert "options" not in desc
+        assert "values" not in desc
         assert "default" not in desc
         assert "description" not in desc
 
@@ -285,7 +286,7 @@ class TestDevicePropertyDescriptionProperties:
         )
         desc = prop.get_description_properties()
         assert desc["type"] == "enumeration"
-        assert desc["options"] == {"0": "Auto", "1": "Manual"}
+        assert desc["values"] == {"Auto": NO_VALUE, "Manual": NO_VALUE}
         # Numeric fields should not be present even if set
         assert "min" not in desc
         assert "max" not in desc
@@ -300,7 +301,7 @@ class TestDevicePropertyDescriptionProperties:
         desc = prop.get_description_properties()
         assert desc["type"] == "string"
         assert desc["default"] == "unknown"
-        assert "options" not in desc
+        assert "values" not in desc
 
     def test_enumeration_empty_options_not_included(self):
         _, _, _, vdsd = _make_stack()
@@ -309,7 +310,7 @@ class TestDevicePropertyDescriptionProperties:
             type=PROPERTY_TYPE_ENUMERATION,
         )
         desc = prop.get_description_properties()
-        assert "options" not in desc
+        assert "values" not in desc
 
 
 # ===========================================================================
@@ -325,8 +326,7 @@ class TestDevicePropertyValueProperties:
         prop = DeviceProperty(vdsd=vdsd, ds_index=0, name="test")
 
         val = prop.get_value_properties()
-        assert val["name"] == "test"
-        assert val["value"] is None
+        assert val is None
 
     def test_with_value(self):
         _, _, _, vdsd = _make_stack()
@@ -334,8 +334,7 @@ class TestDevicePropertyValueProperties:
         prop.value = 42.0
 
         val = prop.get_value_properties()
-        assert val["name"] == "test"
-        assert val["value"] == 42.0
+        assert val == 42.0
 
 
 # ===========================================================================
@@ -568,19 +567,18 @@ class TestVdsdDevicePropertyProperties:
         assert "deviceProperties" in props
 
         desc = props["devicePropertyDescriptions"]
-        assert "0" in desc
-        assert desc["0"]["name"] == "battery"
-        assert desc["0"]["type"] == "numeric"
-        assert desc["0"]["min"] == 0.0
-        assert desc["0"]["max"] == 100.0
-        assert desc["0"]["resolution"] == 1.0
-        assert desc["0"]["siunit"] == "%"
-        assert desc["0"]["description"] == "Battery level"
+        assert "battery" in desc
+        assert desc["battery"]["name"] == "battery"
+        assert desc["battery"]["type"] == "numeric"
+        assert desc["battery"]["min"] == 0.0
+        assert desc["battery"]["max"] == 100.0
+        assert desc["battery"]["resolution"] == 1.0
+        assert desc["battery"]["siunit"] == "%"
+        assert desc["battery"]["description"] == "Battery level"
 
         vals = props["deviceProperties"]
-        assert "0" in vals
-        assert vals["0"]["name"] == "battery"
-        assert vals["0"]["value"] is None  # no value set yet
+        assert "battery" in vals
+        assert vals["battery"] is None  # no value set yet
 
     def test_with_value_set(self):
         _, _, _, vdsd = _make_stack()
@@ -592,7 +590,7 @@ class TestVdsdDevicePropertyProperties:
         vdsd.add_device_property(prop)
 
         props = vdsd.get_properties()
-        assert props["deviceProperties"]["0"]["value"] == 85.0
+        assert props["deviceProperties"]["battery"] == 85.0
 
 
 # ===========================================================================

@@ -264,8 +264,8 @@ class TestButtonInputSettings:
     def test_mode_setter(self):
         _, _, _, vdsd = _scaffold()
         btn = _make_button_input(vdsd)
-        btn.mode = ButtonMode.PRESENCE
-        assert btn.mode == ButtonMode.PRESENCE
+        btn.mode = ButtonMode.SWITCHED
+        assert btn.mode == ButtonMode.SWITCHED
 
     def test_channel_setter(self):
         _, _, _, vdsd = _scaffold()
@@ -337,7 +337,7 @@ class TestButtonInputSettingsProperties:
             name="B",
             group=2,
             function=ButtonFunction.AREA_1,
-            mode=ButtonMode.PRESENCE,
+            mode=ButtonMode.SWITCHED,
             channel=10,
             sets_local_priority=True,
             calls_present=True,
@@ -345,7 +345,7 @@ class TestButtonInputSettingsProperties:
         s = btn.get_settings_properties()
         assert s["group"] == 2
         assert s["function"] == int(ButtonFunction.AREA_1)
-        assert s["mode"] == int(ButtonMode.PRESENCE)
+        assert s["mode"] == int(ButtonMode.SWITCHED)
         assert s["channel"] == 10
         assert s["setsLocalPriority"] is True
         assert s["callsPresent"] is True
@@ -628,7 +628,7 @@ class TestButtonInputApplySettings:
             {
                 "group": 4,
                 "function": int(ButtonFunction.AREA_2),
-                "mode": int(ButtonMode.PRESENCE),
+                "mode": int(ButtonMode.SWITCHED),
                 "channel": 20,
                 "setsLocalPriority": True,
                 "callsPresent": True,
@@ -636,7 +636,7 @@ class TestButtonInputApplySettings:
         )
         assert btn.group == 4
         assert btn.function == ButtonFunction.AREA_2
-        assert btn.mode == ButtonMode.PRESENCE
+        assert btn.mode == ButtonMode.SWITCHED
         assert btn.channel == 20
         assert btn.sets_local_priority is True
         assert btn.calls_present is True
@@ -1542,7 +1542,7 @@ class TestCreateButtonGroup:
             button_type=ButtonType.SINGLE_PUSHBUTTON,
             group=3,
             function=ButtonFunction.ROOM,
-            mode=ButtonMode.PRESENCE,
+            mode=ButtonMode.SWITCHED,
             channel=10,
             sets_local_priority=True,
             calls_present=True,
@@ -1550,7 +1550,7 @@ class TestCreateButtonGroup:
         btn = buttons[0]
         assert btn.group == 3
         assert btn.function == ButtonFunction.ROOM
-        assert btn.mode == ButtonMode.PRESENCE
+        assert btn.mode == ButtonMode.SWITCHED
         assert btn.channel == 10
         assert btn.sets_local_priority is True
         assert btn.calls_present is True

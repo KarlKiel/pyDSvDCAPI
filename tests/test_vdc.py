@@ -244,7 +244,8 @@ class TestVdcProperties:
         expected_keys = {
             "dSUID", "displayId", "type", "model", "modelVersion",
             "modelUID", "hardwareVersion", "hardwareGuid",
-            "hardwareModelGuid", "vendorName", "vendorGuid",
+            "hardwareModelGuid", "vendorName", "vendorId", "vendorGuid",
+            "descriptionsGroup", "descriptionsClass",
             "oemGuid", "oemModelGuid", "configURL", "deviceIcon16",
             "deviceIconName", "name", "deviceClass",
             "deviceClassVersion", "active", "implementationId",

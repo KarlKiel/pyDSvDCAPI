@@ -116,8 +116,11 @@ class ColorClass(IntEnum):
     "colour class" as defined in the digitalSTROM specification — distinct from
     the output *group* numbers used for scene calls (see :class:`ColorGroup`).
 
-    Value 9 (WHITE) is used to mark a device as a **Single Device** (Einzelgerät),
-    which enables the SingleDevice configurator UI in the dSS.
+    Values 1–8 correspond to the basic colour classes.  Values 9–12 are
+    additional climate sub-groups.  Value 9 (WHITE) also serves as a
+    **Single Device** marker (Einzelgerät), enabling the SingleDevice
+    configurator UI in the dSS.  Values 48, 64, 65 and 69 are apartment-level
+    group designations.  (Firmware: ApplicationType enum in modelconst.h.)
     """
 
     YELLOW = 1        # gelb/hell — Light
@@ -128,7 +131,14 @@ class ColorClass(IntEnum):
     RED = 6           # Rot/Sicherheit — Security
     GREEN = 7         # Grün/Zugang — Access
     BLACK = 8         # Schwarz/Joker — Joker / Configurable
-    WHITE = 9         # Weiß/Einzelgerät — Single Device
+    WHITE = 9         # Weiß/Einzelgerät — Single Device; also used as cooling sub-group
+    BLUE_VENTILATION = 10       # Lüftung — Ventilation
+    BLUE_WINDOW = 11            # Fenster — Window
+    BLUE_RECIRCULATION = 12     # Umluft — Recirculation / fan-coil
+    BLUE_TEMPERATURE_CONTROL = 48   # Raumtemperaturregelung
+    APARTMENT_VENTILATION = 64      # Apartment-level ventilation
+    AWNINGS = 65                    # Markisen — Awnings
+    APARTMENT_RECIRCULATION = 69    # Apartment-level recirculation
 
 
 class ColorGroup(IntEnum):
@@ -141,6 +151,8 @@ class ColorGroup(IntEnum):
     Note: the values 1–8 overlap with :class:`ColorClass`, but value 9 differs:
     here it is ``BLUE_COOLING`` (output group), whereas in :class:`ColorClass`
     9 is ``WHITE`` (SingleDevice colour class).
+
+    Values are firmware-verified from ApplicationType enum (modelconst.h).
     """
 
     YELLOW = 1        # gelb/Licht — Light
@@ -156,8 +168,9 @@ class ColorGroup(IntEnum):
     BLUE_WINDOW = 11          # blau/Fenster — Window
     BLUE_RECIRCULATION = 12   # blau/Umluft — Recirculation / fan-coil
     BLUE_TEMPERATURE_CONTROL = 48   # Raumtemperaturregelung
-    BLUE_VENTILATION_CONTROL = 49   # Raumlüftungsregelung
     APARTMENT_VENTILATION = 64      # Apartment Ventilation
+    AWNINGS = 65                    # Markisen — Awnings
+    APARTMENT_RECIRCULATION = 69    # Apartment-level recirculation
 
 # ---------------------------------------------------------------------------
 #  Scene numbers  (ds-basics Appendix B)
@@ -579,47 +592,61 @@ class ZoneTemperatureMode(IntEnum):
 
 @unique
 class OutputChannelType(IntEnum):
-    """Standard output channel type identifiers.
+    """Standard output channel type identifiers (firmware-verified).
+
+    Values are taken directly from the dSS firmware ChannelType enum
+    (modelconst.h, DS_REFLECTED_ENUM sequential from 0).  The firmware
+    casts the integer received from the vDC API directly to this enum
+    (vdc-connection.cpp: static_cast<ChannelType>(fieldProp.getValueAsInt())),
+    so these integer values must match exactly what the firmware expects.
 
     IDs 0–191 are reserved for standard types.
     IDs 192–239 are available for device-specific (proprietary) channels.
     """
 
-    DEFAULT = 0
+    DEFAULT = 0       # none / catch-all
     BRIGHTNESS = 1
     HUE = 2
     SATURATION = 3
-    COLOR_TEMPERATURE = 4
+    COLOR_TEMPERATURE = 4   # mired (100–1000)
     CIE_X = 5
     CIE_Y = 6
 
-    SHADE_POSITION_OUTSIDE = 11
-    SHADE_POSITION_INDOOR = 12
-    SHADE_OPENING_ANGLE_OUTSIDE = 13
-    SHADE_OPENING_ANGLE_INDOOR = 14
-    TRANSPARENCY = 15
+    # Shade / blind channels (ids 7–11)
+    SHADE_POSITION_OUTSIDE = 7    # roller blinds / external blinds, 0–100 %
+    SHADE_POSITION_INDOOR = 8     # curtains / indoor blinds, 0–100 %
+    SHADE_OPENING_ANGLE_OUTSIDE = 9
+    SHADE_OPENING_ANGLE_INDOOR = 10
+    TRANSPARENCY = 11
 
-    HEATING_POWER = 21
-    HEATING_VALVE = 22
-    COOLING_CAPACITY = 23
-    COOLING_VALVE = 24
-    AIR_FLOW_INTENSITY = 25
-    AIR_FLOW_DIRECTION = 26
-    AIR_FLAP_POSITION = 27
-    AIR_LOUVER_POSITION = 28
-    AIR_LOUVER_AUTO = 29
-    AIR_FLOW_AUTO = 30
+    # HVAC channels (ids 12–21)
+    AIR_FLOW_INTENSITY = 12
+    AIR_FLOW_DIRECTION = 13
+    AIR_FLAP_POSITION = 14
+    AIR_LOUVER_POSITION = 15
+    HEATING_POWER = 16
+    COOLING_CAPACITY = 17
 
-    AUDIO_VOLUME = 41
-    AUDIO_BASS = 42
-    AUDIO_TREBLE = 43
-    AUDIO_BALANCE = 44
+    # Audio (id 18)
+    AUDIO_VOLUME = 18
 
-    WATER_TEMPERATURE = 51
-    WATER_FLOW = 52
-    POWER_STATE = 53
-    WIND_SPEED_RATE = 54
-    POWER_LEVEL = 55
+    # Power / general (id 19)
+    POWER_STATE = 19
+
+    # HVAC auto-modes (ids 20–21)
+    AIR_LOUVER_AUTO = 20
+    AIR_FLOW_AUTO = 21
+
+    # Water / heating (ids 22–23)
+    WATER_TEMPERATURE = 22
+    WATER_FLOW_RATE = 23
+
+    # Generic power (id 24)
+    POWER_LEVEL = 24
+
+    # Video (ids 25–26)
+    VIDEO_STATION = 25
+    VIDEO_INPUT_SOURCE = 26
 
 
 # ---------------------------------------------------------------------------
@@ -629,7 +656,15 @@ class OutputChannelType(IntEnum):
 
 @unique
 class OutputFunction(IntEnum):
-    """Describes the functional type of a device's output."""
+    """Describes the functional type of a device's output.
+
+    Sent as the ``function`` field in outputDescription.
+
+    Note: the dSS firmware does **not** read or process the ``function``
+    field from the vDC API output description (confirmed: vdc-connection.cpp
+    reads only ``activeCoolingMode`` and ``heatingSystemType`` from
+    outputSettings; ``function`` is purely informational for API consumers).
+    """
 
     ON_OFF = 0
     DIMMER = 1
@@ -732,7 +767,18 @@ class SensorUsage(IntEnum):
 
 @unique
 class BinaryInputType(IntEnum):
-    """Binary input sensor function / type identifiers."""
+    """Binary input sensor function / type identifiers.
+
+    Values correspond to the ``sensorFunction`` setting in
+    binaryInputDescriptions, and are firmware-verified against
+    BinaryInputType enum in modelconst.h (values 0–23 match exactly).
+
+    Important: only ``BinaryInputId=15`` (APP_MODE, i.e. ``GENERIC=0``) is
+    interpreted and acted upon by the dSS firmware itself.  All other binary
+    input IDs are forwarded to and processed by the dSM hardware bus module.
+    (Firmware comment: "APP_MODE = 15, dSS will interpret and react (not the
+    dSM). other values are not interpreted by dss" — businterface.cpp.)
+    """
 
     GENERIC = 0
     PRESENCE = 1
@@ -850,11 +896,18 @@ class ButtonFunction(IntEnum):
 
 @unique
 class ButtonMode(IntEnum):
-    """Button input mode (LTMODE register)."""
+    """Button input mode (firmware: ButtonInputMode enum, modelconst.h).
 
-    STANDARD = 0
-    TURBO = 1
-    PRESENCE = 2
+    These values are sent as the ``mode`` setting of buttonInputDescriptions
+    and are processed by the dSS firmware via
+    static_cast<ButtonInputMode>(modeValue).
+    """
+
+    STANDARD = 0          # 1-way push button
+    TURBO = 1             # 1-way turbo
+    SWITCHED = 2          # switched / toggle
+
+    # 2-way paired inputs (down half + up half share one physical button)
     TWO_WAY_DOWN_PAIRED_1 = 5
     TWO_WAY_DOWN_PAIRED_2 = 6
     TWO_WAY_DOWN_PAIRED_3 = 7
@@ -863,6 +916,22 @@ class ButtonMode(IntEnum):
     TWO_WAY_UP_PAIRED_2 = 10
     TWO_WAY_UP_PAIRED_3 = 11
     TWO_WAY_UP_PAIRED_4 = 12
+
+    TWO_WAY = 13          # 2-way
+    ONE_WAY = 14          # 1-way (explicit)
+
+    # AKM (Aktor-Kontakt-Modul) modes
+    AKM_STANDARD = 16
+    AKM_INVERTED = 17
+    AKM_ON_RISING_EDGE = 18
+    AKM_ON_FALLING_EDGE = 19
+    AKM_OFF_RISING_EDGE = 20
+    AKM_OFF_FALLING_EDGE = 21
+    AKM_RISING_EDGE = 22
+    AKM_FALLING_EDGE = 23
+
+    HEATING_PUSHBUTTON = 65   # 1-way heating push button
+    DEACTIVATED = 0xFF        # deactivated
 
 
 @unique

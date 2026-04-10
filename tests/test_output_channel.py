@@ -147,9 +147,7 @@ class TestChannelSpecs:
             OutputChannelType.SHADE_OPENING_ANGLE_INDOOR,
             OutputChannelType.TRANSPARENCY,
             OutputChannelType.HEATING_POWER,
-            OutputChannelType.HEATING_VALVE,
             OutputChannelType.COOLING_CAPACITY,
-            OutputChannelType.COOLING_VALVE,
             OutputChannelType.AIR_FLOW_INTENSITY,
             OutputChannelType.AIR_FLOW_DIRECTION,
             OutputChannelType.AIR_FLAP_POSITION,
@@ -157,14 +155,12 @@ class TestChannelSpecs:
             OutputChannelType.AIR_LOUVER_AUTO,
             OutputChannelType.AIR_FLOW_AUTO,
             OutputChannelType.AUDIO_VOLUME,
-            OutputChannelType.AUDIO_BASS,
-            OutputChannelType.AUDIO_TREBLE,
-            OutputChannelType.AUDIO_BALANCE,
             OutputChannelType.WATER_TEMPERATURE,
-            OutputChannelType.WATER_FLOW,
+            OutputChannelType.WATER_FLOW_RATE,
             OutputChannelType.POWER_STATE,
-            OutputChannelType.WIND_SPEED_RATE,
             OutputChannelType.POWER_LEVEL,
+            OutputChannelType.VIDEO_STATION,
+            OutputChannelType.VIDEO_INPUT_SOURCE,
         }
         assert set(CHANNEL_SPECS.keys()) == expected
 

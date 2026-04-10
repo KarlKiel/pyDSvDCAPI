@@ -1521,11 +1521,11 @@ class TestDeriveModelFeatures:
         vdsd.derive_model_features()
         assert "transt" in vdsd.model_features
 
-    def test_transt_heating_valve_channel(self):
-        # Start with no auto-channels, then add HEATING_VALVE (type=22 → in 22-24)
+    def test_transt_cooling_capacity_channel(self):
+        # Start with no auto-channels, then add COOLING_CAPACITY (type=17 → in 14-18)
         vdsd, _ = self._setup()
         output = Output(vdsd=vdsd, function=OutputFunction.INTERNALLY_CONTROLLED, name="output", default_group=1, active_group=1, groups={1})
-        output.add_channel(OutputChannelType.HEATING_VALVE)
+        output.add_channel(OutputChannelType.COOLING_CAPACITY)
         vdsd.set_output(output)
         vdsd.derive_model_features()
         assert "transt" in vdsd.model_features

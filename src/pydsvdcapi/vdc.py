@@ -144,8 +144,18 @@ class Vdc:
         Native hardware model GUID.
     vendor_name:
         Human-readable vendor name.
+    vendor_id:
+        Short vendor identifier in ``schema:id`` format (e.g.
+        ``enoceanvendor:002:Themokon`` or a GS1 GLN).  Read by the
+        firmware alongside *vendor_guid*.
     vendor_guid:
         Globally unique vendor identifier.
+    descriptions_group:
+        System-ID used to look up the device's UI description group in
+        the dSS configurator database.
+    descriptions_class:
+        System-ID used to look up the device's UI description class in
+        the dSS configurator database.
     oem_guid:
         OEM product GUID.
     oem_model_guid:
@@ -171,7 +181,9 @@ class Vdc:
     _TRACKED_ATTRS: ClassVar[frozenset] = frozenset({
         "name", "model", "model_version", "model_uid",
         "hardware_version", "hardware_guid", "hardware_model_guid",
-        "vendor_name", "vendor_guid", "oem_guid", "oem_model_guid",
+        "vendor_name", "vendor_id", "vendor_guid",
+        "descriptions_group", "descriptions_class",
+        "oem_guid", "oem_model_guid",
         "config_url", "device_icon_name", "device_class",
         "device_class_version", "zone_id",
     })
@@ -210,7 +222,10 @@ class Vdc:
         hardware_guid: Optional[str] = None,
         hardware_model_guid: Optional[str] = None,
         vendor_name: Optional[str] = None,
+        vendor_id: Optional[str] = None,
         vendor_guid: Optional[str] = None,
+        descriptions_group: Optional[str] = None,
+        descriptions_class: Optional[str] = None,
         oem_guid: Optional[str] = None,
         oem_model_guid: Optional[str] = None,
         config_url: Optional[str] = None,
@@ -251,7 +266,10 @@ class Vdc:
         self.hardware_guid: Optional[str] = hardware_guid
         self.hardware_model_guid: Optional[str] = hardware_model_guid
         self.vendor_name: Optional[str] = vendor_name
+        self.vendor_id: Optional[str] = vendor_id
         self.vendor_guid: Optional[str] = vendor_guid
+        self.descriptions_group: Optional[str] = descriptions_group
+        self.descriptions_class: Optional[str] = descriptions_class
         self.oem_guid: Optional[str] = oem_guid
         self.oem_model_guid: Optional[str] = oem_model_guid
         self.config_url: Optional[str] = config_url
@@ -614,7 +632,10 @@ class Vdc:
             "hardwareGuid": self.hardware_guid,
             "hardwareModelGuid": self.hardware_model_guid,
             "vendorName": self.vendor_name,
+            "vendorId": self.vendor_id,
             "vendorGuid": self.vendor_guid,
+            "descriptionsGroup": self.descriptions_group,
+            "descriptionsClass": self.descriptions_class,
             "oemGuid": self.oem_guid,
             "oemModelGuid": self.oem_model_guid,
             "configURL": self.config_url,
@@ -659,7 +680,10 @@ class Vdc:
             "hardwareGuid": self.hardware_guid,
             "hardwareModelGuid": self.hardware_model_guid,
             "vendorName": self.vendor_name,
+            "vendorId": self.vendor_id,
             "vendorGuid": self.vendor_guid,
+            "descriptionsGroup": self.descriptions_group,
+            "descriptionsClass": self.descriptions_class,
             "oemGuid": self.oem_guid,
             "oemModelGuid": self.oem_model_guid,
             "configURL": self.config_url,
@@ -705,8 +729,14 @@ class Vdc:
                 self.hardware_model_guid = state["hardwareModelGuid"]
             if "vendorName" in state:
                 self.vendor_name = state["vendorName"]
+            if "vendorId" in state:
+                self.vendor_id = state["vendorId"]
             if "vendorGuid" in state:
                 self.vendor_guid = state["vendorGuid"]
+            if "descriptionsGroup" in state:
+                self.descriptions_group = state["descriptionsGroup"]
+            if "descriptionsClass" in state:
+                self.descriptions_class = state["descriptionsClass"]
             if "oemGuid" in state:
                 self.oem_guid = state["oemGuid"]
             if "oemModelGuid" in state:

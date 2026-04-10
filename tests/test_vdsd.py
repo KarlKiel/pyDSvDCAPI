@@ -1783,3 +1783,106 @@ class TestDeriveModelFeatures:
         features_first = frozenset(vdsd.model_features)
         vdsd.derive_model_features()
         assert frozenset(vdsd.model_features) == features_first
+
+    # ---- guard: announce() must not override manual changes ----------
+
+    def test_flag_not_set_initially(self):
+        vdsd, _ = self._setup()
+        assert vdsd._model_features_derived is False
+
+    def test_derive_sets_flag(self):
+        vdsd, _ = self._setup()
+        vdsd.derive_model_features()
+        assert vdsd._model_features_derived is True
+
+    def test_remove_sets_flag(self):
+        """remove_model_feature() must set the flag to protect the removal."""
+        vdsd, _ = self._setup()
+        assert vdsd._model_features_derived is False
+        vdsd.remove_model_feature("nonexistent")  # no-op but still sets flag
+        assert vdsd._model_features_derived is True
+
+    def test_add_does_not_set_flag(self):
+        """add_model_feature() alone should NOT set the flag — auto-derive
+        in announce() still needs to run to contribute the rest of the set."""
+        vdsd, _ = self._setup()
+        vdsd.add_model_feature("blink")
+        assert vdsd._model_features_derived is False
+
+    def test_announce_skips_derive_when_flag_set(self):
+        """If derive was called (or a feature removed) before announce,
+        announce must NOT re-run derivation and must not re-add removed features."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from pydsvdcapi.session import VdcSession
+
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+
+        # Derive first, then remove a feature that derivation would add
+        vdsd.derive_model_features()
+        assert "outvalue8" in vdsd.model_features
+        vdsd.remove_model_feature("outvalue8")
+        assert "outvalue8" not in vdsd.model_features
+
+        # Mock a session that returns ERR_OK
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        response = MagicMock()
+        response.generic_response.code = 0  # pb.ERR_OK
+        session.send_request = AsyncMock(return_value=response)
+        session.send_notification = AsyncMock()
+
+        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
+
+        # outvalue8 must still be absent after announcement
+        assert "outvalue8" not in vdsd.model_features
+
+    def test_announce_auto_derives_when_flag_not_set(self):
+        """When neither derive nor remove was called, announce runs derivation."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from pydsvdcapi.session import VdcSession
+
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+
+        assert vdsd._model_features_derived is False
+        assert "outvalue8" not in vdsd.model_features
+
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        response = MagicMock()
+        response.generic_response.code = 0
+        session.send_request = AsyncMock(return_value=response)
+        session.send_notification = AsyncMock()
+
+        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
+
+        assert "outvalue8" in vdsd.model_features
+
+    def test_remove_before_announce_preserves_removal(self):
+        """Calling remove_model_feature() before announce — without an explicit
+        derive call — must still protect the initial empty set from being
+        overridden by auto-derive in announce."""
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock
+        from pydsvdcapi.session import VdcSession
+
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+
+        # Remove without prior derive — flag should be set, blocking auto-derive
+        vdsd.remove_model_feature("outvalue8")
+
+        session = MagicMock(spec=VdcSession)
+        session.is_active = True
+        response = MagicMock()
+        response.generic_response.code = 0
+        session.send_request = AsyncMock(return_value=response)
+        session.send_notification = AsyncMock()
+
+        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
+
+        # outvalue8 was never in the set; auto-derive was skipped
+        assert "outvalue8" not in vdsd.model_features

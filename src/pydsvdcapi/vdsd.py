@@ -309,6 +309,10 @@ class Vdsd:
         self._model_features: Set[str] = (
             set(model_features) if model_features else set()
         )
+        # Set to True once derive_model_features() has been called (manually
+        # or automatically).  Also set by remove_model_feature() so that
+        # explicit removals are not undone by the auto-derive in announce().
+        self._model_features_derived: bool = False
         self.prog_mode: Optional[bool] = prog_mode
         self.current_config_id: Optional[str] = current_config_id
         self._configurations: List[str] = (
@@ -574,8 +578,14 @@ class Vdsd:
         self._model_features.add(feature)
 
     def remove_model_feature(self, feature: str) -> None:
-        """Remove a model feature flag (no-op if absent)."""
+        """Remove a model feature flag (no-op if absent).
+
+        Also marks model features as finalised so that the automatic
+        derive call inside :meth:`announce` does not re-add the removed
+        feature.
+        """
         self._model_features.discard(feature)
+        self._model_features_derived = True
 
     # Channel-type IDs that support transitions (used by derive_model_features).
     _TRANST_CHANNEL_TYPES: frozenset = frozenset(
@@ -587,10 +597,23 @@ class Vdsd:
     def derive_model_features(self) -> None:
         """Derive and add model-feature flags from the configured components.
 
-        Applies the following rules, adding to any already-set features
-        (duplicates are prevented automatically).  The method is called
-        automatically at the start of :meth:`announce`; it may also be
-        called manually to preview or refresh the flags.
+        Applies the following rules, **adding** to any already-set features
+        (duplicates are prevented automatically).
+
+        After this method returns a flag is set so that :meth:`announce`
+        will **not** run derivation again automatically.  This means you
+        can call this method early to obtain the derived set, then freely
+        add or remove features with :meth:`add_model_feature` /
+        :meth:`remove_model_feature`, confident that :meth:`announce`
+        will not undo those changes.
+
+        Calling :meth:`remove_model_feature` without first calling this
+        method also sets the flag, preventing the removed feature from
+        being re-added during announcement.
+
+        If neither this method nor :meth:`remove_model_feature` is called
+        before :meth:`announce`, derivation runs automatically at
+        announcement time.
 
         **Sensor / input rules**
 
@@ -752,6 +775,7 @@ class Vdsd:
             self._model_features.add("locationconfig")
             self._model_features.add("windprotectionconfig")
 
+        self._model_features_derived = True
         logger.info(
             "[DIAG] derive_model_features '%s': %s",
             self.name, sorted(self._model_features),
@@ -1912,6 +1936,11 @@ class Vdsd:
         Sends ``VDC_SEND_ANNOUNCE_DEVICE`` with this vdSD's dSUID
         and the containing vDC's dSUID, then awaits ``GENERIC_RESPONSE``.
 
+        Model features are auto-derived via :meth:`derive_model_features`
+        **only** if that method (or :meth:`remove_model_feature`) has not
+        already been called.  Any manual changes made after an explicit
+        call to :meth:`derive_model_features` are therefore preserved.
+
         This method should normally be called via :meth:`Device.announce`
         rather than directly, to enforce the "all components defined
         first" contract.
@@ -1921,7 +1950,8 @@ class Vdsd:
         bool
             ``True`` if the vdSM accepted the announcement.
         """
-        self.derive_model_features()
+        if not self._model_features_derived:
+            self.derive_model_features()
         vdc = self._device.vdc
         msg = pb.Message()
         msg.type = pb.VDC_SEND_ANNOUNCE_DEVICE

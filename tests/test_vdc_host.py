@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import ColorClass, ColorGroup
 from pydsvdcapi.session import VdcSession
@@ -379,6 +379,7 @@ def _make_host_with_device():
     device = Device(vdc=vdc, dsuid=base)
     vdsd = Vdsd(
         device=device, primary_group=ColorClass.YELLOW, name="RemoveDev",
+        model="Test vdSD",
     )
     device.add_vdsd(vdsd)
     vdc.add_device(device)
@@ -604,13 +605,13 @@ class TestHandleIdentifyNotification:
 
         base1 = DsUid.from_name_in_space("id-test-1", DsUidNamespace.VDC)
         dev1 = Device(vdc=vdc, dsuid=base1)
-        vdsd1 = Vdsd(device=dev1, primary_group=ColorClass.YELLOW, name="Dev1")
+        vdsd1 = Vdsd(device=dev1, primary_group=ColorClass.YELLOW, name="Dev1", model="Test vdSD")
         dev1.add_vdsd(vdsd1)
         vdc.add_device(dev1)
 
         base2 = DsUid.from_name_in_space("id-test-2", DsUidNamespace.VDC)
         dev2 = Device(vdc=vdc, dsuid=base2)
-        vdsd2 = Vdsd(device=dev2, primary_group=ColorClass.YELLOW, name="Dev2")
+        vdsd2 = Vdsd(device=dev2, primary_group=ColorClass.YELLOW, name="Dev2", model="Test vdSD")
         dev2.add_vdsd(vdsd2)
         vdc.add_device(dev2)
 

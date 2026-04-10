@@ -25,7 +25,8 @@ Lifecycle
 2. Attach one or more Vdsd instances via ``device.add_vdsd()``.
 3. Configure each Vdsd (primary group, model features, …).
 4. When configuration is final, call ``device.announce(session)`` to
-   announce **all** contained Vdsd instances to the vdSM.
+   announce **all** contained Vdsd instances to the vdSM and register
+   the device for persistence.
 5. To change structural properties after announcement, call
    ``device.update(session, callback)`` which will vanish/re-announce.
 
@@ -48,7 +49,7 @@ Usage example::
     vdsd = Vdsd(device=device, primary_group=ColorClass.YELLOW,
                 name="Kitchen Light")
     device.add_vdsd(vdsd)
-    vdc.add_device(device)
+    await device.announce(session)
 
     # Multi-vdSD device (e.g. combined light + shade)
     base = DsUid.from_enocean("0512ABCD")
@@ -59,7 +60,7 @@ Usage example::
                       subdevice_index=1, name="Shade")
     device2.add_vdsd(vdsd_light)
     device2.add_vdsd(vdsd_shade)
-    vdc.add_device(device2)
+    await device2.announce(session)
 """
 
 from __future__ import annotations
@@ -78,7 +79,7 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid
 from pydsvdcapi.enums import ColorClass, ColorGroup
 
@@ -247,10 +248,10 @@ class Vdsd:
         self,
         *,
         device: Device,
-        primary_group: Optional[ColorClass] = ColorClass.BLACK,
+        primary_group: ColorClass,
         subdevice_index: int = 0,
-        name: Optional[str] = None,
-        model: str = "pydsvdcapi vdSD",
+        name: str,
+        model: str,
         model_version: Optional[str] = None,
         model_uid: Optional[str] = None,
         hardware_version: Optional[str] = None,
@@ -284,7 +285,11 @@ class Vdsd:
         )
 
         # --- common properties ----------------------------------------
-        self.name: str = name or f"Device {subdevice_index}"
+        if not name:
+            raise ValueError("Vdsd.name must not be empty")
+        if not model:
+            raise ValueError("Vdsd.model must not be empty")
+        self.name: str = name
         self.model: str = model
         self.model_version: Optional[str] = model_version
         self.model_uid: str = (
@@ -304,15 +309,11 @@ class Vdsd:
         self.device_class_version: Optional[str] = device_class_version
 
         # --- vdSD-specific properties ---------------------------------
-        self._primary_group: Optional[ColorClass] = primary_group
+        self._primary_group: ColorClass = primary_group
         self.zone_id: int = zone_id
         self._model_features: Set[str] = (
             set(model_features) if model_features else set()
         )
-        # Set to True once derive_model_features() has been called (manually
-        # or automatically).  Also set by remove_model_feature() so that
-        # explicit removals are not undone by the auto-derive in announce().
-        self._model_features_derived: bool = False
         self.prog_mode: Optional[bool] = prog_mode
         self.current_config_id: Optional[str] = current_config_id
         self._configurations: List[str] = (
@@ -578,14 +579,8 @@ class Vdsd:
         self._model_features.add(feature)
 
     def remove_model_feature(self, feature: str) -> None:
-        """Remove a model feature flag (no-op if absent).
-
-        Also marks model features as finalised so that the automatic
-        derive call inside :meth:`announce` does not re-add the removed
-        feature.
-        """
+        """Remove a model feature flag (no-op if absent)."""
         self._model_features.discard(feature)
-        self._model_features_derived = True
 
     # Channel-type IDs that support transitions (used by derive_model_features).
     _TRANST_CHANNEL_TYPES: frozenset = frozenset(
@@ -617,16 +612,18 @@ class Vdsd:
 
         **Sensor / input rules**
 
-        * Any output present → ``"dontcare"``
         * Binary input ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
         * Binary input ``sensorFunction`` in {13, 14, 15} → ``"window"``
         * Any sensor input → ``"sensor"``
         * Sensor ``sensorType`` 1 → ``"temperature"``
         * Sensor ``sensorType`` 2 → ``"humidity"``
         * Sensor ``sensorType`` 14 → ``"energy"``
+        * Sensor ``sensorType`` in {14, 15, 16, 17} (ACTIVE_POWER,
+          ELECTRIC_CURRENT, ENERGY_METER, APPARENT_POWER) → ``"consumption"``
 
         **Output / channel rules**
 
+        * Any output present → ``"dontcare"``
         * Output ``activeGroup`` 1 → ``"light"``
         * Output ``function`` in {1, 3, 4} → ``"dimmable"``
         * Output ``activeGroup`` 2 and ``function`` 2 → ``"shade"``
@@ -637,12 +634,18 @@ class Vdsd:
           ``"shadeposition"``; if additionally a channel with
           ``channelType`` 9 or 10 exists → ``"shadebladeang"`` +
           ``"motiontimefins"``
-        * All other outputs (``defaultGroup`` ≠ 2 or ``function`` ≠ 2),
-          *except* ``INTERNALLY_CONTROLLED`` → ``"outvalue8"``
+        * Output ``defaultGroup`` ≠ 2 → ``"outvalue8"``
         * Output present and channels contain both ``channelType`` 2
           and 3 → ``"outputchannels"``
         * Output with ``defaultGroup`` in {3, 9, 10, 12, 48} and
           ``function`` 0 → ``"heatingoutmode"`` + ``"pwmvalue"``
+
+        Note: ``"outmode"``, ``"outmodeswitch"``, ``"outmodegeneric"``,
+        ``"extradimmer"``, ``"switch"`` and related output-mode UI
+        features are **never** auto-derived.  Standard vDCs do not
+        support the hardware-specific output-mode UIs those features
+        control.  If needed, add them manually via
+        :meth:`add_model_feature`.
 
         **Button rules**
 
@@ -665,8 +668,9 @@ class Vdsd:
           ``"heatinggroup"``; if output present also ``"valvetype"``
         * ``primaryGroup`` 2 (GREY) with output → ``"locationconfig"`` +
           ``"windprotectionconfig"``
+        * ``primaryGroup`` 8 (BLACK/Joker) → ``"jokerconfig"``
         """
-        # ---- legacy rules (unchanged) --------------------------------
+        # ---- legacy rules --------------------------------------------
         if self._output is not None:
             self._model_features.add("dontcare")
 
@@ -687,6 +691,8 @@ class Vdsd:
                     self._model_features.add("humidity")
                 elif st == 14:
                     self._model_features.add("energy")
+                if st in {14, 15, 16, 17}:
+                    self._model_features.add("consumption")
 
         if self._output is not None:
             ag = self._output.active_group
@@ -719,8 +725,7 @@ class Vdsd:
                     if ch_types & {9, 10}:
                         self._model_features.add("shadebladeang")
                         self._model_features.add("motiontimefins")
-            elif fn != 6:
-                # INTERNALLY_CONTROLLED (6) = action output; suppresses outvalue8
+            else:
                 self._model_features.add("outvalue8")
 
             # outputchannels: HUE (2) AND SATURATION (3) both present
@@ -775,7 +780,9 @@ class Vdsd:
             self._model_features.add("locationconfig")
             self._model_features.add("windprotectionconfig")
 
-        self._model_features_derived = True
+        if pg == 8:  # ColorClass.BLACK (Joker)
+            self._model_features.add("jokerconfig")
+
         logger.info(
             "[DIAG] derive_model_features '%s': %s",
             self.name, sorted(self._model_features),
@@ -1525,53 +1532,61 @@ class Vdsd:
         if has_single_device:
             # Action descriptions (§4.5.2) — always present for
             # SingleDevice, even if empty.
+            # The element name (dict key) IS the action ID used by the
+            # dSS — it calls vdcAction.getName() to identify the action.
             props["deviceActionDescriptions"] = {
-                str(desc.ds_index): desc.get_description_properties()
+                desc.name: desc.get_description_properties()
                 for desc in self._action_descriptions.values()
             } if self._action_descriptions else {}
 
             # Standard actions (§4.5.3).
+            # Key = standard action name, e.g. "std.play".
             props["standardActions"] = {
-                str(std.ds_index): std.get_properties()
+                std.name: std.get_properties()
                 for std in self._standard_actions.values()
             } if self._standard_actions else {}
 
             # Custom actions (§4.5.3).
+            # Key = custom action name, e.g. "custom.play-loud".
             props["customActions"] = {
-                str(cust.ds_index): cust.get_properties()
+                cust.name: cust.get_properties()
                 for cust in self._custom_actions.values()
             } if self._custom_actions else {}
 
             # Dynamic device actions (§4.5.3).
+            # Key = dynamic action name, e.g. "dynamic.special".
             props["dynamicActionDescriptions"] = {
-                str(dyn.ds_index): dyn.get_properties()
+                dyn.name: dyn.get_properties()
                 for dyn in self._dynamic_actions.values()
             } if self._dynamic_actions else {}
 
             # Device event descriptions (§4.7) — always present for
-            # SingleDevice, even if empty (p44vdc always has all 9 keys).
+            # SingleDevice, even if empty.
+            # Key = event name, e.g. "customAlert".
             props["deviceEventDescriptions"] = {
-                str(evt.ds_index): evt.get_description_properties()
+                evt.name: evt.get_description_properties()
                 for evt in self._device_events.values()
             } if self._device_events else {}
 
             # Device state descriptions & values (§4.6.1 / §4.6.2).
+            # Key = state name, e.g. "operatingState".
             props["deviceStateDescriptions"] = {
-                str(st.ds_index): st.get_description_properties()
+                st.name: st.get_description_properties()
                 for st in self._device_states.values()
             } if self._device_states else {}
             props["deviceStates"] = {
-                str(st.ds_index): st.get_state_properties()
+                st.name: st.get_state_properties()
                 for st in self._device_states.values()
             } if self._device_states else {}
 
             # Device property descriptions & values (§4.6.3 / §4.6.4).
+            # Key = property name, e.g. "eventCounter".
             props["devicePropertyDescriptions"] = {
-                str(prop.ds_index): prop.get_description_properties()
+                prop.name: prop.get_description_properties()
                 for prop in self._device_properties.values()
             } if self._device_properties else {}
             props["deviceProperties"] = {
-                str(prop.ds_index): prop.get_value_properties()
+                prop.name: prop.get_value_properties()
                 for prop in self._device_properties.values()
             } if self._device_properties else {}
 
@@ -1825,7 +1840,7 @@ class Vdsd:
                     idx = si_state.get("dsIndex", 0)
                     si = self._sensor_inputs.get(idx)
                     if si is None:
-                        si = SensorInput(
+                        si = SensorInput._restore(
                             vdsd=self,
                             ds_index=idx,
                         )
@@ -1923,7 +1938,14 @@ class Vdsd:
                 from pydsvdcapi.output import Output
                 out_state = state["output"]
                 if self._output is None:
-                    self._output = Output(vdsd=self)
+                    self._output = Output(
+                        vdsd=self,
+                        name=out_state.get("name") or "output",
+                        function=out_state.get("function", 0),
+                        default_group=out_state.get("defaultGroup", 0),
+                        active_group=out_state.get("activeGroup", 0),
+                        groups=set(out_state.get("groups") or []),
+                    )
                 self._output._apply_state(out_state)
         finally:
             self._auto_save_enabled = prev
@@ -1936,22 +1958,14 @@ class Vdsd:
         Sends ``VDC_SEND_ANNOUNCE_DEVICE`` with this vdSD's dSUID
         and the containing vDC's dSUID, then awaits ``GENERIC_RESPONSE``.
 
-        Model features are auto-derived via :meth:`derive_model_features`
-        **only** if that method (or :meth:`remove_model_feature`) has not
-        already been called.  Any manual changes made after an explicit
-        call to :meth:`derive_model_features` are therefore preserved.
-
         This method should normally be called via :meth:`Device.announce`
-        rather than directly, to enforce the "all components defined
-        first" contract.
+        rather than directly.
 
         Returns
         -------
         bool
             ``True`` if the vdSM accepted the announcement.
         """
-        if not self._model_features_derived:
-            self.derive_model_features()
         vdc = self._device.vdc
         msg = pb.Message()
         msg.type = pb.VDC_SEND_ANNOUNCE_DEVICE
@@ -2262,6 +2276,10 @@ class Device:
                 from pydsvdcapi.device_template import AnnouncementNotReadyError
                 raise AnnouncementNotReadyError(missing)
 
+        # Register with the parent VDC so the device is persisted and
+        # visible to vdc.announce_devices() on reconnect.  Idempotent.
+        self._vdc.add_device(self)
+
         count = 0
         for vdsd in self._vdsds.values():
             try:
@@ -2422,6 +2440,8 @@ class Device:
                     device=self,
                     subdevice_index=idx,
                     primary_group=primary_group,
+                    name=vdsd_state.get("name") or f"Device {idx}",
+                    model=vdsd_state.get("model") or "Restored vdSD",
                 )
                 self._vdsds[idx] = vdsd
             vdsd._apply_state(vdsd_state)

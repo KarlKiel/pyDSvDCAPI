@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.button_input import (
     BUTTON_TYPE_ELEMENTS,
     ButtonInput,
@@ -73,6 +73,7 @@ def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
         "device": device,
         "primary_group": ColorClass.BLACK,
         "name": "Btn Test vdSD",
+        "model": "Test Btn vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)

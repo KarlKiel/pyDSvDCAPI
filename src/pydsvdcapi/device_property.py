@@ -63,9 +63,9 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.conversion import apply_converter, compile_converter
-from pydsvdcapi.property_handling import dict_to_elements
+from pydsvdcapi.property_handling import NO_VALUE, dict_to_elements
 
 if TYPE_CHECKING:
     from pydsvdcapi.session import VdcSession
@@ -330,13 +330,13 @@ class DeviceProperty:
             {"name": "battery", "type": "numeric",
              "min": 0.0, "max": 100.0, ...}
 
-        Keys in the parent dict are numeric string indices
-        (``str(ds_index)``), matching the pattern used by sensors
-        and buttons.  The ``name`` field identifies the property.
+        The element name (dict key in the parent dict) IS the property
+        identifier used by the dSS — it reads ``vdcProperty.getName()``.
 
-        For enumeration properties, ``options`` maps integer
-        option-id strings to labels (e.g. ``{"0": "Auto"}``),
-        matching the spec format.
+        For enumeration properties, ``values`` is a label-keyed dict
+        where each entry has no scalar value (``NO_VALUE``).  The dSS
+        reads element names via ``vdcProperty["values"]`` /
+        ``vdcValue.getName()``.
         """
         props: Dict[str, Any] = {
             "name": self._name,
@@ -352,11 +352,10 @@ class DeviceProperty:
                 props["resolution"] = self._resolution
             if self._siunit is not None:
                 props["siunit"] = self._siunit
-        # Enumeration-specific: option id → label pairs.
+        # Enumeration-specific: label-keyed elements with no scalar value.
+        # dSS reads: vdcProperty["values"] → getName() per element.
         if self._type == PROPERTY_TYPE_ENUMERATION and self._options:
-            props["options"] = {
-                str(k): v for k, v in self._options.items()
-            }
+            props["values"] = {v: NO_VALUE for v in self._options.values()}
         # All-type optional fields.
         if self._default is not None:
             props["default"] = self._default
@@ -364,20 +363,22 @@ class DeviceProperty:
             props["description"] = self._description
         return props
 
-    def get_value_properties(self) -> Dict[str, Any]:
-        """Return **deviceProperties** value (§4.6.4).
+    def get_value_properties(self) -> Any:
+        """Return the **deviceProperties** value for this property.
 
         Format::
 
-            {"name": "battery", "value": 85.0}
+            scalar  (e.g. 85.0, "Auto", None)
 
-        Returns a dict with ``name`` and ``value`` fields,
-        matching the spec §4.6.4 format.
+        dSS reads ``vdcProperty.getValue()`` — the element's **own** scalar
+        value (``PropertyElement.value``), NOT a nested sub-element.  So the
+        value must be carried directly on the element, not inside a
+        ``{"value": ...}`` child.
+
+        Returns the raw Python scalar (``float``, ``str``, ``bool``, or
+        ``None``).
         """
-        return {
-            "name": self._name,
-            "value": self._value,
-        }
+        return self._value
 
     # ---- persistence -------------------------------------------------
 

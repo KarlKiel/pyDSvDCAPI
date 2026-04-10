@@ -5,7 +5,7 @@ import struct
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.connection import VdcConnection
 from pydsvdcapi.session import SessionState
 from pydsvdcapi.vdc_host import VdcHost

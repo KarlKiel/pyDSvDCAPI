@@ -61,9 +61,9 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.conversion import apply_converter, compile_converter
-from pydsvdcapi.property_handling import dict_to_elements
+from pydsvdcapi.property_handling import NO_VALUE, dict_to_elements
 
 if TYPE_CHECKING:
     from pydsvdcapi.session import VdcSession
@@ -283,25 +283,23 @@ class DeviceState:
         Format::
 
             {"name": "operatingState",
-             "options": {"0": "Off", "1": "Running"},
+             "value": {"values": {"Off": NO_VALUE, "Running": NO_VALUE}},
              "description": "..."}  # optional
 
-        Keys in the parent dict are numeric string indices
-        (``str(ds_index)``), matching the pattern used by
-        ``sensorDescriptions`` and ``buttonInputDescriptions``.
-        The ``name`` field identifies the state semantically.
-        ``options`` maps integer option-id strings to labels.
+        The dSS reads enum option labels from element *names* under
+        ``value/values`` via ``VdcElementReader`` (calling
+        ``vdcValue.getName()`` for each child element).  Each element
+        carries no scalar value (``NO_VALUE``); the element name IS
+        the option label.
         """
         props: Dict[str, Any] = {
             "name": self._name,
         }
-        # Options as id→label pairs (spec: "0": "Off", "1": "Running").
-        if self._options:
-            props["options"] = {
-                str(k): v for k, v in self._options.items()
-            }
-        else:
-            props["options"] = {}
+        # Enum options as name-keyed elements with no scalar value.
+        # dSS reads: vdcState["value"]["values"] → getName() per element.
+        props["value"] = {
+            "values": {v: NO_VALUE for v in self._options.values()}
+        }
         if self._description is not None:
             props["description"] = self._description
         return props

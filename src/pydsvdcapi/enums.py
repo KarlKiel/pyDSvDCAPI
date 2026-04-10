@@ -157,6 +157,7 @@ class ColorGroup(IntEnum):
     BLUE_RECIRCULATION = 12   # blau/Umluft — Recirculation / fan-coil
     BLUE_TEMPERATURE_CONTROL = 48   # Raumtemperaturregelung
     BLUE_VENTILATION_CONTROL = 49   # Raumlüftungsregelung
+    APARTMENT_VENTILATION = 64      # Apartment Ventilation
 
 # ---------------------------------------------------------------------------
 #  Scene numbers  (ds-basics Appendix B)
@@ -637,6 +638,7 @@ class OutputFunction(IntEnum):
     FULL_COLOR_DIMMER = 4
     BIPOLAR = 5
     INTERNALLY_CONTROLLED = 6
+    CUSTOM = 0x7F  # ActionOutputBehaviour — no standard channels
 
 
 @unique

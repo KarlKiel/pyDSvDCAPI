@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.connection import VdcConnection
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.session import SessionState, VdcSession
@@ -115,9 +115,9 @@ class TestVdcConstruction:
 
     def test_minimal_construction(self):
         host = _make_host()
-        vdc = Vdc(host=host, implementation_id="x-test-vdc")
+        vdc = Vdc(host=host, implementation_id="x-test-vdc", name="x-test-vdc", model="pydsvdcapi vDC")
         assert vdc.implementation_id == "x-test-vdc"
-        assert vdc.name == "x-test-vdc"  # defaults to impl id
+        assert vdc.name == "x-test-vdc"  # explicit name
         assert vdc.model == "pydsvdcapi vDC"
         assert vdc.entity_type == ENTITY_TYPE_VDC
         assert vdc.entity_type == "vDC"
@@ -582,6 +582,7 @@ class TestVdcHostPersistenceWithVdcs:
             host=host2,
             implementation_id="x-test-persist",
             name="Default Name",
+            model="Test Persist vDC",
         )
         host2.add_vdc(vdc2)
         host2._cancel_auto_save()
@@ -610,6 +611,7 @@ class TestVdcHostPersistenceWithVdcs:
             host=host1,
             implementation_id="x-test-restore",
             name="Restored vDC",
+            model="Test Restore vDC",
             zone_id=99,
         )
         host1.add_vdc(vdc)

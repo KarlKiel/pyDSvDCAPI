@@ -310,8 +310,10 @@ def build_device_a(vdc: "Vdc") -> "Device":
     output = Output(
         vdsd=vdsd,
         function=OutputFunction.INTERNALLY_CONTROLLED,
+        name="output",
         mode=OutputMode.DISABLED,
         default_group=int(ColorGroup.BLACK),
+        active_group=int(ColorGroup.BLACK),
         groups={int(ColorGroup.BLACK)},
     )
     vdsd.set_output(output)
@@ -464,8 +466,10 @@ def build_device_b(vdc: "Vdc") -> "Device":
     output = Output(
         vdsd=vdsd,
         function=OutputFunction.DIMMER_COLOR_TEMP,
+        name="output",
         default_group=1,
         active_group=1,
+        groups={1},
         push_changes=True,
     )
     vdsd.set_output(output)
@@ -619,6 +623,7 @@ def build_device_c(vdc: "Vdc") -> "Device":
     output = Output(
         vdsd=vdsd,
         function=OutputFunction.ON_OFF,
+        name="output",
         default_group=8,
         active_group=8,
         groups={8},

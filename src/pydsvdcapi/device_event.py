@@ -56,7 +56,8 @@ from typing import (
     Optional,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
+from pydsvdcapi.vdcapi_pb2 import PropertyElement as _PropertyElement
 from pydsvdcapi.property_handling import dict_to_elements
 
 if TYPE_CHECKING:
@@ -202,7 +203,7 @@ class DeviceEvent:
         msg.vdc_send_push_notification.dSUID = str(self._vdsd.dsuid)
 
         # Each raised event is a PropertyElement keyed by name.
-        event_elem = pb.PropertyElement()
+        event_elem = _PropertyElement()
         event_elem.name = self._name
         msg.vdc_send_push_notification.deviceevents.append(event_elem)
 

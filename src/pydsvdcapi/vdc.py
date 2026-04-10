@@ -49,7 +49,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, List, Optional, Union
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 
 if TYPE_CHECKING:
@@ -202,8 +202,8 @@ class Vdc:
         host: VdcHost,
         implementation_id: str,
         dsuid: Optional[DsUid] = None,
-        name: Optional[str] = None,
-        model: str = "pydsvdcapi vDC",
+        name: str,
+        model: str,
         model_version: Optional[str] = None,
         model_uid: Optional[str] = None,
         hardware_version: Optional[str] = None,
@@ -218,7 +218,7 @@ class Vdc:
         device_icon_name: Optional[str] = None,
         device_class: Optional[str] = None,
         device_class_version: Optional[str] = None,
-        capabilities: Optional[VdcCapabilities] = None,
+        capabilities: VdcCapabilities = VdcCapabilities(),
         zone_id: int = 0,
         template_path: Optional[Union[str, Path]] = None,
     ) -> None:
@@ -237,7 +237,11 @@ class Vdc:
             self._dsuid = self._derive_dsuid(implementation_id)
 
         # --- common properties ----------------------------------------
-        self.name: str = name or implementation_id
+        if not name:
+            raise ValueError("Vdc.name must not be empty")
+        if not model:
+            raise ValueError("Vdc.model must not be empty")
+        self.name: str = name
         self.model: str = model
         self.model_version: Optional[str] = model_version
         self.model_uid: str = (
@@ -257,9 +261,7 @@ class Vdc:
         self.device_class_version: Optional[str] = device_class_version
 
         # --- vDC-specific properties ----------------------------------
-        self._capabilities: VdcCapabilities = (
-            capabilities or VdcCapabilities()
-        )
+        self._capabilities: VdcCapabilities = capabilities
         self.zone_id: int = zone_id
 
         # --- device registry ------------------------------------------

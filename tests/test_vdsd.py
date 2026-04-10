@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 import yaml
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.binary_input import BinaryInput
 from pydsvdcapi.button_input import ButtonInput
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
@@ -79,6 +79,7 @@ def _make_vdsd(
         "subdevice_index": subdevice_index,
         "primary_group": primary_group,
         "name": f"Test vdSD {subdevice_index}",
+        "model": "Test vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -198,7 +199,7 @@ class TestVdsdConstruction:
         host = _make_host()
         vdc = _make_vdc(host)
         device = _make_device(vdc)
-        vdsd = Vdsd(device=device)
+        vdsd = Vdsd(device=device, primary_group=ColorClass.BLACK, name="Test", model="Test")
 
         assert vdsd.primary_group == ColorClass.BLACK
 
@@ -510,6 +511,9 @@ class TestDeviceVdsdManagement:
         bad_vdsd = Vdsd(
             device=Device(vdc=vdc, dsuid=other_base),
             subdevice_index=0,
+            primary_group=ColorClass.YELLOW,
+            name="BadVdsd",
+            model="Test",
         )
         # The bad_vdsd has a different base dSUID.
         with pytest.raises(ValueError, match="does not share"):
@@ -680,6 +684,21 @@ class TestDeviceAnnouncement:
 
         with pytest.raises(RuntimeError, match="announced device"):
             device.remove_vdsd(0)
+
+    async def test_announce_registers_device_with_vdc(self):
+        """device.announce() must register the device in vdc.devices."""
+        host = _make_host()
+        vdc = _make_vdc(host)
+        device = _make_device(vdc)
+        vdsd = _make_vdsd(device, subdevice_index=0)
+        device.add_vdsd(vdsd)
+
+        assert str(device.dsuid) not in vdc.devices
+
+        session = _make_mock_session(pb.ERR_OK)
+        await device.announce(session)
+
+        assert str(device.dsuid) in vdc.devices
 
 
 # ===========================================================================
@@ -1405,9 +1424,9 @@ class TestMultiVdsdDsuid:
         device = Device(vdc=vdc, dsuid=base)
 
         v0 = Vdsd(device=device, subdevice_index=0,
-                   primary_group=ColorClass.YELLOW)
+                   primary_group=ColorClass.YELLOW, name="v0", model="Test")
         v2 = Vdsd(device=device, subdevice_index=2,
-                   primary_group=ColorClass.GREY)
+                   primary_group=ColorClass.GREY, name="v2", model="Test")
         device.add_vdsd(v0)
         device.add_vdsd(v2)
 
@@ -1421,8 +1440,8 @@ class TestMultiVdsdDsuid:
         vdc = _make_vdc(host)
         base = DsUid.from_enocean("0512ABCD")
         device = Device(vdc=vdc, dsuid=base)
-        v0 = Vdsd(device=device, subdevice_index=0)
-        v3 = Vdsd(device=device, subdevice_index=3)
+        v0 = Vdsd(device=device, subdevice_index=0, primary_group=ColorClass.YELLOW, name="v0", model="Test")
+        v3 = Vdsd(device=device, subdevice_index=3, primary_group=ColorClass.YELLOW, name="v3", model="Test")
 
         assert v0.dsuid.device_base() == device.dsuid
         assert v3.dsuid.device_base() == device.dsuid
@@ -1434,8 +1453,8 @@ class TestMultiVdsdDsuid:
         d1 = Device(vdc=vdc, dsuid=DsUid.random())
         d2 = Device(vdc=vdc, dsuid=DsUid.random())
 
-        v1 = Vdsd(device=d1, subdevice_index=0)
-        v2 = Vdsd(device=d2, subdevice_index=0)
+        v1 = Vdsd(device=d1, subdevice_index=0, primary_group=ColorClass.YELLOW, name="v1", model="Test")
+        v2 = Vdsd(device=d2, subdevice_index=0, primary_group=ColorClass.YELLOW, name="v2", model="Test")
 
         assert not v1.dsuid.same_device(v2.dsuid)
 
@@ -1491,21 +1510,21 @@ class TestDeriveModelFeatures:
     def test_transt_brightness_channel(self):
         vdsd, _ = self._setup()
         # DIMMER auto-creates BRIGHTNESS (channelType=1)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "transt" in vdsd.model_features
 
     def test_transt_color_temp_channel(self):
         vdsd, _ = self._setup()
         # DIMMER_COLOR_TEMP creates BRIGHTNESS (1) + COLOR_TEMPERATURE (4)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "transt" in vdsd.model_features
 
     def test_transt_heating_valve_channel(self):
         # Start with no auto-channels, then add HEATING_VALVE (type=22 → in 22-24)
         vdsd, _ = self._setup()
-        output = Output(vdsd=vdsd, function=OutputFunction.INTERNALLY_CONTROLLED)
+        output = Output(vdsd=vdsd, function=OutputFunction.INTERNALLY_CONTROLLED, name="output", default_group=1, active_group=1, groups={1})
         output.add_channel(OutputChannelType.HEATING_VALVE)
         vdsd.set_output(output)
         vdsd.derive_model_features()
@@ -1514,7 +1533,7 @@ class TestDeriveModelFeatures:
     def test_no_transt_without_matching_channels(self):
         vdsd, _ = self._setup()
         # INTERNALLY_CONTROLLED has no auto-created channels
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.INTERNALLY_CONTROLLED))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.INTERNALLY_CONTROLLED, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "transt" not in vdsd.model_features
 
@@ -1597,7 +1616,7 @@ class TestDeriveModelFeatures:
 
     def test_shade_defaultgroup2_adds_shadeprops(self):
         vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=2))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=2, name="output", active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "shadeprops" in vdsd.model_features
 
@@ -1605,6 +1624,7 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2,
+            name="output", active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
         assert "shadeposition" in vdsd.model_features
@@ -1612,7 +1632,7 @@ class TestDeriveModelFeatures:
 
     def test_shade_position_with_blade_channels_adds_shadebladeang(self):
         vdsd, _ = self._setup()
-        output = Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2)
+        output = Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2, name="output", active_group=1, groups={1})
         output.add_channel(9)  # channelType 9 (blade angle)
         vdsd.set_output(output)
         vdsd.derive_model_features()
@@ -1623,6 +1643,7 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2,
+            name="output", active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
         assert "shadebladeang" not in vdsd.model_features
@@ -1630,34 +1651,35 @@ class TestDeriveModelFeatures:
 
     def test_non_shade_output_adds_outvalue8(self):
         vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1, name="output", active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "outvalue8" in vdsd.model_features
 
-    def test_internally_controlled_no_outvalue8(self):
-        """ActionOutputBehaviour equivalent must not get outvalue8."""
+    def test_internally_controlled_gets_outvalue8(self):
+        """INTERNALLY_CONTROLLED is no longer excluded from outvalue8."""
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd,
             function=OutputFunction.INTERNALLY_CONTROLLED,
             mode=OutputMode.DISABLED,
+            name="output", default_group=1, active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
-        assert "outvalue8" not in vdsd.model_features
+        assert "outvalue8" in vdsd.model_features
 
     # ---- outputchannels -------------------------------------------------
 
     def test_outputchannels_when_hue_and_saturation_present(self):
         vdsd, _ = self._setup()
         # FULL_COLOR_DIMMER auto-creates HUE (2) + SATURATION (3)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.FULL_COLOR_DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.FULL_COLOR_DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "outputchannels" in vdsd.model_features
 
     def test_no_outputchannels_without_hue_and_saturation(self):
         vdsd, _ = self._setup()
         # DIMMER_COLOR_TEMP has no HUE/SATURATION
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "outputchannels" not in vdsd.model_features
 
@@ -1701,7 +1723,7 @@ class TestDeriveModelFeatures:
 
     def test_primary_group_3_with_output_adds_valvetype(self):
         vdsd, _ = self._setup(primary_group=ColorClass.BLUE_CLIMATE)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "valvetype" in vdsd.model_features
 
@@ -1714,6 +1736,7 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=3,
+            name="output", active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
         assert "heatingoutmode" in vdsd.model_features
@@ -1724,6 +1747,7 @@ class TestDeriveModelFeatures:
             vdsd, _ = self._setup()
             vdsd.set_output(Output(
                 vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=dg,
+                name="output", active_group=1, groups={1},
             ))
             vdsd.derive_model_features()
             assert "heatingoutmode" in vdsd.model_features, f"defaultGroup={dg}"
@@ -1733,6 +1757,7 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=1,
+            name="output", active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
         assert "heatingoutmode" not in vdsd.model_features
@@ -1742,13 +1767,14 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup()
         vdsd.set_output(Output(
             vdsd=vdsd, function=OutputFunction.DIMMER, default_group=3,
+            name="output", active_group=1, groups={1},
         ))
         vdsd.derive_model_features()
         assert "heatingoutmode" not in vdsd.model_features
 
     def test_primary_group_2_with_output_adds_location_and_wind(self):
         vdsd, _ = self._setup(primary_group=ColorClass.GREY)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2, name="output", active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "locationconfig" in vdsd.model_features
         assert "windprotectionconfig" in vdsd.model_features
@@ -1761,7 +1787,7 @@ class TestDeriveModelFeatures:
 
     def test_primary_group_other_no_location(self):
         vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "locationconfig" not in vdsd.model_features
         assert "windprotectionconfig" not in vdsd.model_features
@@ -1778,111 +1804,145 @@ class TestDeriveModelFeatures:
 
     def test_derive_twice_is_idempotent(self):
         vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         features_first = frozenset(vdsd.model_features)
         vdsd.derive_model_features()
         assert frozenset(vdsd.model_features) == features_first
 
-    # ---- guard: announce() must not override manual changes ----------
+    # ---- outmode --------------------------------------------------------
 
-    def test_flag_not_set_initially(self):
+    def test_non_shade_output_no_outmode(self):
+        """outmode is never auto-derived (standard vDCs don't support it)."""
         vdsd, _ = self._setup()
-        assert vdsd._model_features_derived is False
-
-    def test_derive_sets_flag(self):
-        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1, name="output", active_group=1, groups={1}))
         vdsd.derive_model_features()
-        assert vdsd._model_features_derived is True
+        assert "outmode" not in vdsd.model_features
 
-    def test_remove_sets_flag(self):
-        """remove_model_feature() must set the flag to protect the removal."""
+    def test_internally_controlled_no_outmode(self):
+        """outmode is never auto-derived."""
         vdsd, _ = self._setup()
-        assert vdsd._model_features_derived is False
-        vdsd.remove_model_feature("nonexistent")  # no-op but still sets flag
-        assert vdsd._model_features_derived is True
-
-    def test_add_does_not_set_flag(self):
-        """add_model_feature() alone should NOT set the flag — auto-derive
-        in announce() still needs to run to contribute the rest of the set."""
-        vdsd, _ = self._setup()
-        vdsd.add_model_feature("blink")
-        assert vdsd._model_features_derived is False
-
-    def test_announce_skips_derive_when_flag_set(self):
-        """If derive was called (or a feature removed) before announce,
-        announce must NOT re-run derivation and must not re-add removed features."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock
-        from pydsvdcapi.session import VdcSession
-
-        vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
-
-        # Derive first, then remove a feature that derivation would add
+        vdsd.set_output(Output(
+            vdsd=vdsd,
+            function=OutputFunction.INTERNALLY_CONTROLLED,
+            mode=OutputMode.DISABLED,
+            name="output", default_group=1, active_group=1, groups={1},
+        ))
         vdsd.derive_model_features()
-        assert "outvalue8" in vdsd.model_features
-        vdsd.remove_model_feature("outvalue8")
-        assert "outvalue8" not in vdsd.model_features
+        assert "outmode" not in vdsd.model_features
 
-        # Mock a session that returns ERR_OK
-        session = MagicMock(spec=VdcSession)
-        session.is_active = True
-        response = MagicMock()
-        response.generic_response.code = 0  # pb.ERR_OK
-        session.send_request = AsyncMock(return_value=response)
-        session.send_notification = AsyncMock()
-
-        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
-
-        # outvalue8 must still be absent after announcement
-        assert "outvalue8" not in vdsd.model_features
-
-    def test_announce_auto_derives_when_flag_not_set(self):
-        """When neither derive nor remove was called, announce runs derivation."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock
-        from pydsvdcapi.session import VdcSession
-
+    def test_shade_output_no_outmode(self):
         vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "outmode" not in vdsd.model_features
 
-        assert vdsd._model_features_derived is False
-        assert "outvalue8" not in vdsd.model_features
+    # ---- switch / outmodeswitch -----------------------------------------
 
-        session = MagicMock(spec=VdcSession)
-        session.is_active = True
-        response = MagicMock()
-        response.generic_response.code = 0
-        session.send_request = AsyncMock(return_value=response)
-        session.send_notification = AsyncMock()
-
-        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
-
-        assert "outvalue8" in vdsd.model_features
-
-    def test_remove_before_announce_preserves_removal(self):
-        """Calling remove_model_feature() before announce — without an explicit
-        derive call — must still protect the initial empty set from being
-        overridden by auto-derive in announce."""
-        import asyncio
-        from unittest.mock import AsyncMock, MagicMock
-        from pydsvdcapi.session import VdcSession
-
+    def test_onoff_non_shade_output_no_switch_or_outmodeswitch(self):
+        """switch/outmodeswitch are never auto-derived."""
         vdsd, _ = self._setup()
-        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER))
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=1, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "switch" not in vdsd.model_features
+        assert "outmodeswitch" not in vdsd.model_features
 
-        # Remove without prior derive — flag should be set, blocking auto-derive
-        vdsd.remove_model_feature("outvalue8")
+    def test_dimmer_output_no_switch(self):
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "switch" not in vdsd.model_features
+        assert "outmodeswitch" not in vdsd.model_features
 
-        session = MagicMock(spec=VdcSession)
-        session.is_active = True
-        response = MagicMock()
-        response.generic_response.code = 0
-        session.send_request = AsyncMock(return_value=response)
-        session.send_notification = AsyncMock()
+    # ---- extradimmer ----------------------------------------------------
 
-        asyncio.get_event_loop().run_until_complete(vdsd.announce(session))
+    def test_dimmer_function_no_extradimmer(self):
+        """extradimmer is never auto-derived."""
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "extradimmer" not in vdsd.model_features
 
-        # outvalue8 was never in the set; auto-derive was skipped
-        assert "outvalue8" not in vdsd.model_features
+    def test_ct_dimmer_no_extradimmer(self):
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(
+            vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP, default_group=1,
+            name="output", active_group=1, groups={1},
+        ))
+        vdsd.derive_model_features()
+        assert "extradimmer" not in vdsd.model_features
+
+    def test_onoff_no_extradimmer(self):
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.ON_OFF, default_group=1, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "extradimmer" not in vdsd.model_features
+
+    # ---- consumption ----------------------------------------------------
+
+    def test_active_power_sensor_adds_consumption(self):
+        vdsd, _ = self._setup()
+        si = SensorInput(
+            vdsd=vdsd, ds_index=0,
+            sensor_type=SensorType.ACTIVE_POWER,
+            min_value=0.0, max_value=3680.0, resolution=0.1,
+        )
+        vdsd.add_sensor_input(si)
+        vdsd.derive_model_features()
+        assert "consumption" in vdsd.model_features
+
+    def test_electric_current_sensor_adds_consumption(self):
+        vdsd, _ = self._setup()
+        si = SensorInput(
+            vdsd=vdsd, ds_index=0,
+            sensor_type=SensorType.ELECTRIC_CURRENT,
+            min_value=0.0, max_value=16.0, resolution=0.01,
+        )
+        vdsd.add_sensor_input(si)
+        vdsd.derive_model_features()
+        assert "consumption" in vdsd.model_features
+
+    def test_energy_meter_sensor_adds_consumption(self):
+        vdsd, _ = self._setup()
+        si = SensorInput(
+            vdsd=vdsd, ds_index=0,
+            sensor_type=SensorType.ENERGY_METER,
+            min_value=0.0, max_value=1000000.0, resolution=1.0,
+        )
+        vdsd.add_sensor_input(si)
+        vdsd.derive_model_features()
+        assert "consumption" in vdsd.model_features
+
+    def test_apparent_power_sensor_adds_consumption(self):
+        vdsd, _ = self._setup()
+        si = SensorInput(
+            vdsd=vdsd, ds_index=0,
+            sensor_type=SensorType.APPARENT_POWER,
+            min_value=0.0, max_value=3680.0, resolution=0.1,
+        )
+        vdsd.add_sensor_input(si)
+        vdsd.derive_model_features()
+        assert "consumption" in vdsd.model_features
+
+    def test_temperature_sensor_no_consumption(self):
+        vdsd, _ = self._setup()
+        si = SensorInput(
+            vdsd=vdsd, ds_index=0,
+            sensor_type=SensorType.TEMPERATURE,
+            min_value=-10.0, max_value=40.0, resolution=0.1,
+        )
+        vdsd.add_sensor_input(si)
+        vdsd.derive_model_features()
+        assert "consumption" not in vdsd.model_features
+
+    # ---- jokerconfig / optypeconfig -------------------------------------
+
+    def test_primary_group_8_adds_jokerconfig(self):
+        vdsd, _ = self._setup(primary_group=ColorClass.BLACK)
+        vdsd.derive_model_features()
+        assert "jokerconfig" in vdsd.model_features
+
+    def test_primary_group_non_8_no_jokerconfig(self):
+        vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
+        vdsd.derive_model_features()
+        assert "jokerconfig" not in vdsd.model_features

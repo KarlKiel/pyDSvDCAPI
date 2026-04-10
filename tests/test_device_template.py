@@ -89,7 +89,13 @@ def _make_output_device(vdc: Vdc, name: str = "Dimmer") -> Device:
         name=name,
         model="Dimmer Model",
     )
-    output = Output(vdsd=vdsd)
+    output = Output(
+        vdsd=vdsd,
+        name="output",
+        default_group=1,
+        active_group=1,
+        groups={1},
+    )
     output.add_channel(1)  # channel_type 1 = brightness
     vdsd.set_output(output)
     device.add_vdsd(vdsd)

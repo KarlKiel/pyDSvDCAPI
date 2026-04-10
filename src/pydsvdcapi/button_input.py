@@ -121,7 +121,7 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.enums import (
     ActionMode,
     ButtonClickType,

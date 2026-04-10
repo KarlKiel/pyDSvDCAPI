@@ -43,7 +43,7 @@ from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import VdcHost
 from pydsvdcapi.vdsd import Device, Vdsd
-import pydsvdcapi.genericVDC_pb2 as pb
+import pydsvdcapi.vdc_messages_pb2 as pb
 
 
 # ---------------------------------------------------------------------------
@@ -85,6 +85,7 @@ def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
         "device": device,
         "primary_group": ColorClass.YELLOW,
         "name": "Channel Test vdSD",
+        "model": "Test Channel vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -108,6 +109,9 @@ def _make_output(vdsd: Vdsd, **kwargs: Any) -> Output:
         "function": OutputFunction.DIMMER,
         "output_usage": OutputUsage.ROOM,
         "name": "Test Dimmer",
+        "default_group": 1,
+        "active_group": 1,
+        "groups": {1},
     }
     defaults.update(kwargs)
     return Output(**defaults)
@@ -1275,7 +1279,7 @@ class TestEdgeCases:
         d1_uid = DsUid.from_name_in_space("dev1", DsUidNamespace.VDC)
         d1 = Device(vdc=vdc, dsuid=d1_uid)
         vdsd1 = Vdsd(
-            device=d1, primary_group=ColorClass.YELLOW, name="D1"
+            device=d1, primary_group=ColorClass.YELLOW, name="D1", model="Test"
         )
         d1.add_vdsd(vdsd1)
         vdc.add_device(d1)
@@ -1283,7 +1287,7 @@ class TestEdgeCases:
         d2_uid = DsUid.from_name_in_space("dev2", DsUidNamespace.VDC)
         d2 = Device(vdc=vdc, dsuid=d2_uid)
         vdsd2 = Vdsd(
-            device=d2, primary_group=ColorClass.YELLOW, name="D2"
+            device=d2, primary_group=ColorClass.YELLOW, name="D2", model="Test"
         )
         d2.add_vdsd(vdsd2)
         vdc.add_device(d2)
@@ -1291,11 +1295,13 @@ class TestEdgeCases:
         host.add_vdc(vdc)
 
         out1 = Output(
-            vdsd=vdsd1, function=OutputFunction.DIMMER, name="Out1"
+            vdsd=vdsd1, function=OutputFunction.DIMMER, name="Out1",
+            default_group=1, active_group=1, groups={1},
         )
         vdsd1.set_output(out1)
         out2 = Output(
-            vdsd=vdsd2, function=OutputFunction.DIMMER, name="Out2"
+            vdsd=vdsd2, function=OutputFunction.DIMMER, name="Out2",
+            default_group=1, active_group=1, groups={1},
         )
         vdsd2.set_output(out2)
 

@@ -59,7 +59,7 @@ from typing import (
     Union,
 )
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.conversion import apply_converter, compile_converter
 from pydsvdcapi.enums import BinaryInputType, BinaryInputUsage, InputError
 from pydsvdcapi.property_handling import dict_to_elements

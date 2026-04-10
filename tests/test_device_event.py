@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.device_event import DeviceEvent
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
 from pydsvdcapi.enums import ColorClass, ColorGroup, OutputFunction, OutputUsage
@@ -58,6 +58,7 @@ def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
         "device": device,
         "primary_group": ColorClass.YELLOW,
         "name": "Event Test vdSD",
+        "model": "Test Event vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)
@@ -317,9 +318,9 @@ class TestDeviceEventsInProperties:
 
         props = vdsd.get_properties()
         desc = props["deviceEventDescriptions"]
-        assert "0" in desc
-        assert desc["0"]["name"] == "bell"
-        assert desc["0"]["description"] == "Doorbell"
+        assert "bell" in desc
+        assert desc["bell"]["name"] == "bell"
+        assert desc["bell"]["description"] == "Doorbell"
 
     def test_multiple_events_in_properties(self):
         _, _, _, vdsd = _make_stack()
@@ -333,8 +334,8 @@ class TestDeviceEventsInProperties:
         props = vdsd.get_properties()
         desc = props["deviceEventDescriptions"]
         assert len(desc) == 2
-        assert desc["0"]["name"] == "bell"
-        assert desc["1"]["name"] == "motion"
+        assert desc["bell"]["name"] == "bell"
+        assert desc["motion"]["name"] == "motion"
 
 
 # ===========================================================================

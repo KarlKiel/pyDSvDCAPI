@@ -26,8 +26,7 @@ are auto-created on construction:
 * **DIMMER_COLOR_TEMP** → brightness + colortemp
 * **FULL_COLOR_DIMMER** → brightness + hue + saturation + colortemp
   + cieX + cieY
-* **POSITIONAL / BIPOLAR / INTERNALLY_CONTROLLED** → no auto-created
-  channels; the integrator must add them via :meth:`add_channel`.
+* **POSITIONAL / BIPOLAR / INTERNALLY_CONTROLLED / CUSTOM** → no\n  auto-created channels; the integrator must add them via\n  :meth:`add_channel`.
 
 See :mod:`pydsvdcapi.output_channel` for details on channel semantics,
 bidirectional value flow, ``apply_now`` buffering, and push behaviour.
@@ -79,7 +78,7 @@ from typing import (
     Union,
 )
 
-import pydsvdcapi.genericVDC_pb2 as pb
+import pydsvdcapi.vdc_messages_pb2 as pb
 from pydsvdcapi.enums import (
     HeatingSystemCapability,
     HeatingSystemType,
@@ -141,8 +140,9 @@ FUNCTION_CHANNELS: Dict[OutputFunction, List[OutputChannelType]] = {
         OutputChannelType.CIE_X,
         OutputChannelType.CIE_Y,
     ],
-    # POSITIONAL, BIPOLAR, INTERNALLY_CONTROLLED — no auto-created
-    # channels.  The integrator must add them via add_channel().
+    # POSITIONAL, BIPOLAR, INTERNALLY_CONTROLLED, CUSTOM — no
+    # auto-created channels.  The integrator must add them via
+    # add_channel().
 }
 
 logger = logging.getLogger(__name__)
@@ -341,15 +341,15 @@ class Output:
         vdsd: Vdsd,
         function: Union[OutputFunction, int] = OutputFunction.ON_OFF,
         output_usage: Union[OutputUsage, int] = OutputUsage.UNDEFINED,
-        name: str = "",
-        default_group: int = 0,
+        name: str,
+        default_group: int,
         variable_ramp: bool = False,
         max_power: Optional[float] = None,
         active_cooling_mode: Optional[bool] = None,
         # Settings (writable, persisted)
         mode: Union[OutputMode, int] = OutputMode.DEFAULT,
-        active_group: int = 0,
-        groups: Optional[Set[int]] = None,
+        active_group: int,
+        groups: Set[int],
         push_changes: bool = False,
         on_threshold: Optional[float] = None,
         min_brightness: Optional[float] = None,
@@ -369,6 +369,10 @@ class Output:
         # ---- parent reference ----------------------------------------
         self._vdsd: Vdsd = vdsd
 
+        # ---- mandatory field validation ------------------------------
+        if not name:
+            raise ValueError("Output.name must not be empty")
+
         # ---- description properties (read-only, persisted) -----------
         self._function: OutputFunction = OutputFunction(int(function))
         self._output_usage: OutputUsage = OutputUsage(int(output_usage))
@@ -381,7 +385,7 @@ class Output:
         # ---- settings properties (read/write, persisted) -------------
         self._mode: OutputMode = OutputMode(int(mode))
         self._active_group: int = active_group
-        self._groups: Set[int] = set(groups) if groups else set()
+        self._groups: Set[int] = set(groups)
         self._push_changes: bool = push_changes
         self._on_threshold: Optional[float] = on_threshold
         self._min_brightness: Optional[float] = min_brightness

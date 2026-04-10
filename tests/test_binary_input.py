@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from pydsvdcapi import genericVDC_pb2 as pb
+from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.binary_input import (
     INPUT_TYPE_DETECTS_CHANGES,
     INPUT_TYPE_POLL_ONLY,
@@ -66,6 +66,7 @@ def _make_vdsd(device: Device, **kwargs: Any) -> Vdsd:
         "device": device,
         "primary_group": ColorClass.BLACK,
         "name": "BI Test vdSD",
+        "model": "Test BI vdSD",
     }
     defaults.update(kwargs)
     return Vdsd(**defaults)

@@ -1548,7 +1548,7 @@ class TestDeriveModelFeatures:
         assert "pushbadvanced" in vdsd.model_features
 
     def test_button_group_not_8_adds_pushbarea(self):
-        vdsd, _ = self._setup()
+        vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
         btn = ButtonInput(vdsd=vdsd, ds_index=0, group=1)
         vdsd.add_button_input(btn)
         vdsd.derive_model_features()
@@ -1676,10 +1676,17 @@ class TestDeriveModelFeatures:
         vdsd.derive_model_features()
         assert "outputchannels" in vdsd.model_features
 
-    def test_no_outputchannels_without_hue_and_saturation(self):
+    def test_outputchannels_for_dimmer_color_temp(self):
         vdsd, _ = self._setup()
-        # DIMMER_COLOR_TEMP has no HUE/SATURATION
+        # DIMMER_COLOR_TEMP has BRIGHTNESS + COLOR_TEMPERATURE → outputchannels
         vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP, name="output", default_group=1, active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "outputchannels" in vdsd.model_features
+
+    def test_no_outputchannels_for_dimmer_only(self):
+        vdsd, _ = self._setup()
+        # DIMMER has only BRIGHTNESS (no HUE/SAT, no COLOR_TEMPERATURE)
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "outputchannels" not in vdsd.model_features
 
@@ -1777,20 +1784,24 @@ class TestDeriveModelFeatures:
         vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2, name="output", active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "locationconfig" in vdsd.model_features
-        assert "windprotectionconfig" in vdsd.model_features
+        # POSITIONAL shade without blade channel → awning variant
+        assert "windprotectionconfigawning" in vdsd.model_features
+        assert "windprotectionconfigblind" not in vdsd.model_features
 
     def test_primary_group_2_without_output_no_location(self):
         vdsd, _ = self._setup(primary_group=ColorClass.GREY)
         vdsd.derive_model_features()
         assert "locationconfig" not in vdsd.model_features
-        assert "windprotectionconfig" not in vdsd.model_features
+        assert "windprotectionconfigawning" not in vdsd.model_features
+        assert "windprotectionconfigblind" not in vdsd.model_features
 
     def test_primary_group_other_no_location(self):
         vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
         vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "locationconfig" not in vdsd.model_features
-        assert "windprotectionconfig" not in vdsd.model_features
+        assert "windprotectionconfigawning" not in vdsd.model_features
+        assert "windprotectionconfigblind" not in vdsd.model_features
 
     # ---- does not clobber manually set features -------------------------
 
@@ -1946,3 +1957,73 @@ class TestDeriveModelFeatures:
         vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
         vdsd.derive_model_features()
         assert "jokerconfig" not in vdsd.model_features
+
+    # ---- ledauto --------------------------------------------------------
+
+    def test_output_adds_ledauto(self):
+        vdsd, _ = self._setup()
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, default_group=1, name="output", active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "ledauto" in vdsd.model_features
+
+    def test_no_output_no_ledauto(self):
+        vdsd, _ = self._setup()
+        vdsd.derive_model_features()
+        assert "ledauto" not in vdsd.model_features
+
+    # ---- highlevel from primaryGroup = 8 --------------------------------
+
+    def test_joker_primary_group_adds_highlevel(self):
+        """highlevel must be derived from primaryGroup=8 even without buttons."""
+        vdsd, _ = self._setup(primary_group=ColorClass.BLACK)
+        vdsd.derive_model_features()
+        assert "highlevel" in vdsd.model_features
+
+    def test_non_joker_primary_group_no_highlevel_from_group(self):
+        """Without buttons, non-joker primaryGroup must not add highlevel."""
+        vdsd, _ = self._setup(primary_group=ColorClass.YELLOW)
+        vdsd.derive_model_features()
+        assert "highlevel" not in vdsd.model_features
+
+    # ---- blink / identification / blinkconfig ---------------------------
+
+    def test_on_identify_adds_blink_identification_blinkconfig(self):
+        vdsd, _ = self._setup()
+        vdsd.on_identify = lambda _: None
+        vdsd.derive_model_features()
+        assert "blink" in vdsd.model_features
+        assert "identification" in vdsd.model_features
+        assert "blinkconfig" in vdsd.model_features
+
+    def test_no_on_identify_no_blink(self):
+        vdsd, _ = self._setup()
+        vdsd.derive_model_features()
+        assert "blink" not in vdsd.model_features
+        assert "identification" not in vdsd.model_features
+        assert "blinkconfig" not in vdsd.model_features
+
+    # ---- windprotection split (awning vs. blind) -------------------------
+
+    def test_shade_awning_no_blade_channel(self):
+        """POSITIONAL shade without blade channel → windprotectionconfigawning."""
+        vdsd, _ = self._setup(primary_group=ColorClass.GREY)
+        vdsd.set_output(Output(
+            vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2,
+            name="output", active_group=1, groups={1},
+        ))
+        vdsd.derive_model_features()
+        assert "windprotectionconfigawning" in vdsd.model_features
+        assert "windprotectionconfigblind" not in vdsd.model_features
+
+    def test_shade_blind_with_blade_channel(self):
+        """POSITIONAL shade with channelType 9 → windprotectionconfigblind."""
+        vdsd, _ = self._setup(primary_group=ColorClass.GREY)
+        output = Output(
+            vdsd=vdsd, function=OutputFunction.POSITIONAL, default_group=2,
+            name="output", active_group=1, groups={1},
+        )
+        output.add_channel(9)  # channelType 9 (blade angle)
+        vdsd.set_output(output)
+        vdsd.derive_model_features()
+        assert "windprotectionconfigblind" in vdsd.model_features
+        assert "windprotectionconfigawning" not in vdsd.model_features

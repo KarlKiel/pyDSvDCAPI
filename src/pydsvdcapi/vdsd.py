@@ -628,42 +628,30 @@ class Vdsd:
         before :meth:`announce`, derivation runs automatically at
         announcement time.
 
-        **Sensor / input rules**
-
-        * Binary input ``sensorFunction`` in {1, 3, 5, 6} → ``"presence"``
-        * Binary input ``sensorFunction`` in {13, 14, 15} → ``"window"``
-        * Any sensor input → ``"sensor"``
-        * Sensor ``sensorType`` 1 → ``"temperature"``
-        * Sensor ``sensorType`` 2 → ``"humidity"``
-        * Sensor ``sensorType`` 14 → ``"energy"``
-        * Sensor ``sensorType`` in {14, 15, 16, 17} (ACTIVE_POWER,
-          ELECTRIC_CURRENT, ENERGY_METER, APPARENT_POWER) → ``"consumption"``
-
         **Output / channel rules**
 
-        * Any output present → ``"dontcare"``
-        * Output ``activeGroup`` 1 → ``"light"``
-        * Output ``function`` in {1, 3, 4} → ``"dimmable"``
-        * Output ``activeGroup`` 2 and ``function`` 2 → ``"shade"``
+        * Any output present → ``"dontcare"``, ``"ledauto"``
         * Any channel with ``channelType`` in 1–12, 14–18, or 22–24 →
           ``"transt"``
-        * Output with ``defaultGroup`` 2 → ``"shadeprops"``
-        * Output with ``defaultGroup`` 2 and ``function`` 2 →
-          ``"shadeposition"``; if additionally a channel with
-          ``channelType`` 9 or 10 exists → ``"shadebladeang"`` +
+        * Output ``defaultGroup`` 2 → ``"shadeprops"``
+        * Output ``defaultGroup`` 2 and ``function`` POSITIONAL (2) →
+          ``"shadeposition"``; additionally a channel with
+          ``channelType`` 9 or 10 → ``"shadebladeang"`` +
           ``"motiontimefins"``
         * Output ``defaultGroup`` ≠ 2 → ``"outvalue8"``
-        * Output present and channels contain both ``channelType`` 2
-          and 3 → ``"outputchannels"``
-        * Output with ``defaultGroup`` in {3, 9, 10, 12, 48} and
-          ``function`` 0 → ``"heatingoutmode"`` + ``"pwmvalue"``
+        * Output channels contain both ``channelType`` 2 (HUE) and 3
+          (SATURATION) → ``"outputchannels"`` (full-colour RGB/RGBW)
+        * Output channels contain both ``channelType`` 1 (BRIGHTNESS)
+          and 4 (COLOR_TEMPERATURE) → ``"outputchannels"`` (tunable
+          white)
+        * Output ``defaultGroup`` in {3, 9, 10, 12, 48} and
+          ``function`` ON_OFF (0) → ``"heatingoutmode"`` + ``"pwmvalue"``
 
-        Note: ``"outmode"``, ``"outmodeswitch"``, ``"outmodegeneric"``,
-        ``"extradimmer"``, ``"switch"`` and related output-mode UI
-        features are **never** auto-derived.  Standard vDCs do not
-        support the hardware-specific output-mode UIs those features
-        control.  If needed, add them manually via
-        :meth:`add_model_feature`.
+        **Sensor rules**
+
+        * Sensor ``sensorType`` in {14, 15, 16, 17} (ACTIVE_POWER,
+          ELECTRIC_CURRENT, ENERGY_METER, APPARENT_POWER) →
+          ``"consumption"``
 
         **Button rules**
 
@@ -685,51 +673,41 @@ class Vdsd:
         * ``primaryGroup`` 3 (BLUE_CLIMATE) → ``"heatingprops"`` +
           ``"heatinggroup"``; if output present also ``"valvetype"``
         * ``primaryGroup`` 2 (GREY) with output → ``"locationconfig"`` +
-          ``"windprotectionconfig"``
-        * ``primaryGroup`` 8 (BLACK/Joker) → ``"jokerconfig"``
+          ``"windprotectionconfigblind"`` (when a blade/angle channel
+          with ``channelType`` 9 or 10 is present) or
+          ``"windprotectionconfigawning"`` (otherwise)
+        * ``primaryGroup`` 8 (BLACK/Joker) → ``"jokerconfig"`` +
+          ``"highlevel"``
+
+        **Identification rules**
+
+        * ``on_identify`` callback registered → ``"blink"`` +
+          ``"identification"`` + ``"blinkconfig"``
+
+        Note: ``"outmode"``, ``"outmodeswitch"``, ``"outmodegeneric"``,
+        ``"outmodetempcontrol"``, ``"leddark"``, ``"extradimmer"``,
+        ``"umvrelay"``, ``"umroutmode"``, ``"jokertempcontrol"``,
+        ``"temperatureoffset"``, ``"impulseconfig"``,
+        ``"outconfigswitch"``, ``"customactivityconfig"`` and all
+        hardware-specific features are **never** auto-derived.
+        Add them manually via :meth:`add_model_feature` when needed.
+        The features ``"outmodeenoceanvalve"``, ``"apartmentapplication"``,
+        ``"setumr200config"``, ``"operationlock"``, and
+        ``"grkl387workaround"`` are injected by the dSS firmware and
+        **must not** be set from a vDC.
         """
-        # ---- legacy rules --------------------------------------------
-        if self._output is not None:
-            self._model_features.add("dontcare")
-
-        for bi in self._binary_inputs.values():
-            sf = int(bi.sensor_function)
-            if sf in {1, 3, 5, 6}:
-                self._model_features.add("presence")
-            if sf in {13, 14, 15}:
-                self._model_features.add("window")
-
-        if self._sensor_inputs:
-            self._model_features.add("sensor")
-            for si in self._sensor_inputs.values():
-                st = int(si.sensor_type)
-                if st == 1:
-                    self._model_features.add("temperature")
-                elif st == 2:
-                    self._model_features.add("humidity")
-                elif st == 14:
-                    self._model_features.add("energy")
-                if st in {14, 15, 16, 17}:
-                    self._model_features.add("consumption")
-
-        if self._output is not None:
-            ag = self._output.active_group
-            fn = int(self._output.function)
-            if ag == 1:
-                self._model_features.add("light")
-            if fn in {1, 3, 4}:
-                self._model_features.add("dimmable")
-            if ag == 2 and fn == 2:
-                self._model_features.add("shade")
-
         # ---- output / channel rules ----------------------------------
         if self._output is not None:
+            self._model_features.add("dontcare")
+            self._model_features.add("ledauto")
+
             dg = self._output.default_group
             fn = int(self._output.function)
             ch_types = {
                 int(ch.channel_type)
                 for ch in self._output.channels.values()
             }
+            has_blade_channel = bool(ch_types & {9, 10})
 
             # transt
             if ch_types & self._TRANST_CHANNEL_TYPES:
@@ -738,22 +716,36 @@ class Vdsd:
             # shade vs. normal output
             if dg == 2:
                 self._model_features.add("shadeprops")
-                if fn == 2:
+                if fn == 2:  # OutputFunction.POSITIONAL
                     self._model_features.add("shadeposition")
-                    if ch_types & {9, 10}:
+                    if has_blade_channel:
                         self._model_features.add("shadebladeang")
                         self._model_features.add("motiontimefins")
             else:
                 self._model_features.add("outvalue8")
 
             # outputchannels: HUE (2) AND SATURATION (3) both present
-            if {2, 3} <= ch_types:
+            # (full-colour RGB/RGBW), OR BRIGHTNESS (1) AND
+            # COLOR_TEMPERATURE (4) both present (tunable white).
+            if {2, 3} <= ch_types or {1, 4} <= ch_types:
                 self._model_features.add("outputchannels")
 
             # heating output modes
             if dg in {3, 9, 10, 12, 48} and fn == 0:
                 self._model_features.add("heatingoutmode")
                 self._model_features.add("pwmvalue")
+
+        # ---- sensor / consumption rules ------------------------------
+        for si in self._sensor_inputs.values():
+            if int(si.sensor_type) in {14, 15, 16, 17}:
+                self._model_features.add("consumption")
+
+        # ---- binary input rules --------------------------------------
+        for bi in self._binary_inputs.values():
+            if bi.group == 8:
+                self._model_features.add("akmsensor")
+                self._model_features.add("akminput")
+                self._model_features.add("akmdelay")
 
         # ---- button rules --------------------------------------------
         if self._button_inputs:
@@ -778,13 +770,6 @@ class Vdsd:
                 if btn.ds_index >= 1:
                     self._model_features.add("twowayconfig")
 
-        # ---- binary input rules --------------------------------------
-        for bi in self._binary_inputs.values():
-            if bi.group == 8:
-                self._model_features.add("akmsensor")
-                self._model_features.add("akminput")
-                self._model_features.add("akmdelay")
-
         # ---- primary-group rules -------------------------------------
         pg = int(self._primary_group) if self._primary_group is not None else 0
 
@@ -796,10 +781,24 @@ class Vdsd:
 
         if pg == 2 and self._output is not None:  # ColorClass.GREY
             self._model_features.add("locationconfig")
-            self._model_features.add("windprotectionconfig")
+            ch_types_pg2 = {
+                int(ch.channel_type)
+                for ch in self._output.channels.values()
+            }
+            if ch_types_pg2 & {9, 10}:  # blade/angle channel → jalousie/blind
+                self._model_features.add("windprotectionconfigblind")
+            else:  # no blade channel → awning / roller blind
+                self._model_features.add("windprotectionconfigawning")
 
         if pg == 8:  # ColorClass.BLACK (Joker)
             self._model_features.add("jokerconfig")
+            self._model_features.add("highlevel")
+
+        # ---- identification / blink ----------------------------------
+        if self._on_identify is not None:
+            self._model_features.add("blink")
+            self._model_features.add("identification")
+            self._model_features.add("blinkconfig")
 
         logger.info(
             "[DIAG] derive_model_features '%s': %s",

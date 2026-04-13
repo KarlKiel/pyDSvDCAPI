@@ -60,6 +60,8 @@ class DeviceConfig:
     output_function: OutputFunction
     # Explicit channel types to add; empty = auto-created by the OutputFunction
     channel_types: list[OutputChannelType] = field(default_factory=list)
+    # Extra model features to add manually before derive_model_features()
+    extra_features: list[str] = field(default_factory=list)
     # Optional GTIN
     gtin: Optional[str] = None
     # Note for the summary
@@ -101,7 +103,8 @@ DEVICES: list[DeviceConfig] = [
         output_group=int(ColorGroup.BLUE_HEATING),
         output_function=OutputFunction.POSITIONAL,
         channel_types=[OutputChannelType.HEATING_POWER],
-        note="fn=2 POSITIONAL: heatingPower (21)",
+        extra_features=["heatingoutmode", "pwmvalue"],
+        note="fn=2 POSITIONAL: heatingPower (primary per ds-basics Table 7); heatingoutmode+pwmvalue added manually",
     ),
     # 4 — audio (group 4)
     DeviceConfig(
@@ -118,8 +121,13 @@ DEVICES: list[DeviceConfig] = [
         color_class=ColorClass.MAGENTA,
         output_group=int(ColorGroup.MAGENTA),
         output_function=OutputFunction.POSITIONAL,
-        channel_types=[OutputChannelType.AUDIO_VOLUME],
-        note="fn=2 POSITIONAL: audioVolume (41)",
+        channel_types=[
+            OutputChannelType.AUDIO_VOLUME,        # dsIndex=0: primary per ds-basics Table 7
+            OutputChannelType.POWER_STATE,
+            OutputChannelType.VIDEO_INPUT_SOURCE,
+            OutputChannelType.VIDEO_STATION,
+        ],
+        note="fn=2 POSITIONAL: audioVolume(18) primary, powerState(19)+videoInputSource(26)+videoStation(25)",
     ),
     # 6 — tunable white light (group 1, fn=3 DIMMER_COLOR_TEMP)
     DeviceConfig(
@@ -284,6 +292,7 @@ def build_device(vdc: Vdc, cfg: DeviceConfig) -> DeviceRuntime:
         else:
             mid = 0.0
         ch.set_value_from_vdsm(mid)
+        ch.confirm_applied()  # mark initial value as hardware-confirmed (age != null)
 
     # Bind the primary channel for later push.
     channel: Optional[OutputChannel] = output.get_channel(0)
@@ -295,7 +304,14 @@ def build_device(vdc: Vdc, cfg: DeviceConfig) -> DeviceRuntime:
             info(f"{YELLOW}SET{RESET}  {device_name}  {ch_type.name}={val:.2f}")
     output.on_channel_applied = on_applied
 
-    vdsd.add_model_feature("highlevel")
+    # Manually add any extra features specified in the config
+    # (e.g. heatingoutmode/pwmvalue for POSITIONAL heating — derivation
+    # only auto-adds these for ON_OFF, but HEATING_POWER requires POSITIONAL).
+    for feat in cfg.extra_features:
+        vdsd.add_model_feature(feat)
+    # highlevel is only meaningful for joker (BLACK/group-8) devices.
+    if cfg.color_class == ColorClass.BLACK:
+        vdsd.add_model_feature("highlevel")
     vdsd.derive_model_features()
 
     return DeviceRuntime(cfg=cfg, device=device, vdsd=vdsd, output=output,

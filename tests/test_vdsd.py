@@ -1676,10 +1676,17 @@ class TestDeriveModelFeatures:
         vdsd.derive_model_features()
         assert "outputchannels" in vdsd.model_features
 
-    def test_no_outputchannels_without_hue_and_saturation(self):
+    def test_outputchannels_for_dimmer_color_temp(self):
         vdsd, _ = self._setup()
-        # DIMMER_COLOR_TEMP has no HUE/SATURATION
+        # DIMMER_COLOR_TEMP has BRIGHTNESS + COLOR_TEMPERATURE → outputchannels
         vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER_COLOR_TEMP, name="output", default_group=1, active_group=1, groups={1}))
+        vdsd.derive_model_features()
+        assert "outputchannels" in vdsd.model_features
+
+    def test_no_outputchannels_for_dimmer_only(self):
+        vdsd, _ = self._setup()
+        # DIMMER has only BRIGHTNESS (no HUE/SAT, no COLOR_TEMPERATURE)
+        vdsd.set_output(Output(vdsd=vdsd, function=OutputFunction.DIMMER, name="output", default_group=1, active_group=1, groups={1}))
         vdsd.derive_model_features()
         assert "outputchannels" not in vdsd.model_features
 

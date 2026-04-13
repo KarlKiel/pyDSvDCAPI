@@ -640,7 +640,10 @@ class Vdsd:
           ``"motiontimefins"``
         * Output ``defaultGroup`` ≠ 2 → ``"outvalue8"``
         * Output channels contain both ``channelType`` 2 (HUE) and 3
-          (SATURATION) → ``"outputchannels"``
+          (SATURATION) → ``"outputchannels"`` (full-colour RGB/RGBW)
+        * Output channels contain both ``channelType`` 1 (BRIGHTNESS)
+          and 4 (COLOR_TEMPERATURE) → ``"outputchannels"`` (tunable
+          white)
         * Output ``defaultGroup`` in {3, 9, 10, 12, 48} and
           ``function`` ON_OFF (0) → ``"heatingoutmode"`` + ``"pwmvalue"``
 
@@ -722,7 +725,9 @@ class Vdsd:
                 self._model_features.add("outvalue8")
 
             # outputchannels: HUE (2) AND SATURATION (3) both present
-            if {2, 3} <= ch_types:
+            # (full-colour RGB/RGBW), OR BRIGHTNESS (1) AND
+            # COLOR_TEMPERATURE (4) both present (tunable white).
+            if {2, 3} <= ch_types or {1, 4} <= ch_types:
                 self._model_features.add("outputchannels")
 
             # heating output modes

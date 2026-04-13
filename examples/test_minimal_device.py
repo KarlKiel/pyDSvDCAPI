@@ -135,6 +135,7 @@ async def main() -> None:
         function=OutputFunction.ON_OFF,
         mode=OutputMode.DEFAULT,
         output_usage=OutputUsage.UNDEFINED,
+        name="output",
         default_group=1,
         active_group=1,
         groups={1},
@@ -146,6 +147,7 @@ async def main() -> None:
     ch = output.get_channel(0)
     if ch is not None:
         ch.set_value_from_vdsm(50.0)
+        ch.confirm_applied()  # mark initial value as hardware-confirmed (age != null)
         ch.resolution = 1.0
 
     # Log inbound SET commands.
@@ -156,6 +158,14 @@ async def main() -> None:
 
     # Add outvalue8 explicitly before announcing.
     vdsd.add_model_feature("outvalue8")
+
+    # Auto-derive model features from the configured output/inputs.
+    vdsd.derive_model_features()
+    derived = sorted(vdsd.model_features)
+    info(
+        f"{CYAN}FEATURES{RESET}  MinimalDevice  "
+        f"auto-derived: [{', '.join(derived) if derived else '—'}]"
+    )
 
     # ---- Start -------------------------------------------------------
     await host.start()

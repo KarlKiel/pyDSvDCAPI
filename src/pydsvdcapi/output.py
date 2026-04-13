@@ -1025,8 +1025,7 @@ class Output:
                 continue
             value = ch_val.get("value")
             if value is not None:
-                ch.set_value_from_vdsm(value)
-                ch.confirm_applied()
+                self.buffer_channel_value(ch, value)
 
         logger.debug(
             "call_scene %d: applied to output '%s'",

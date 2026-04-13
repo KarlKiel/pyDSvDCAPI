@@ -120,8 +120,11 @@ Menu items visible in the configurator right-click context for a VDC:
 Each device's **display color** in the configurator is determined by `spec.primaryGroup` in the VdSD announcement. This is set in `putVdcDevice()` from `spec.primaryGroup`:
 
 ```cpp
-modelDevice->addToGroup(spec.primaryGroup);
+modelDevice->addToGroup(spec.primaryGroup);  
 modelDevice->setActiveGroup(spec.primaryGroup);
+
+--> PLEASE BE VERY EXACT ON WHERE to use device class (by primaryGroup) and where to use application Group (defaultGroup, activeGroup) Settings !!!!
+
 ```
 
 ### 3.1 Group ID to UI Color Mapping
@@ -145,6 +148,8 @@ modelDevice->setActiveGroup(spec.primaryGroup);
 | **64** | GroupIDApartmentVentilation | **Blue** | Apartment-level ventilation |
 | **65** | GroupIDApartmentAwnings | **Grey** | Apartment-level awnings / shading |
 | **69** | GroupIDApartmentRecirculation | **Blue** | Apartment-level recirculation |
+
+--> PLEASE BE VERY EXACT ON WHERE to use device class (by primaryGroup) and where to use application Group (defaultGroup, activeGroup)
 
 ### 3.2 Device Overview Line Fields (Common to All Groups)
 

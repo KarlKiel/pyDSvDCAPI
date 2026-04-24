@@ -171,16 +171,62 @@ For backend VDC devices (cloud/HTTP API), the entire busscanner flow is bypassed
 There is exactly **one place** in the entire dSS backend C++ that reads modelFeatures for functional logic:
 
 ```cpp
-// device.cpp:3048
-bool Device::supportsApartmentApplications() const {
-  auto it = m_modelFeatures.find(ModelFeatureId::apartmentapplication);
-  return it != m_modelFeatures.end() ? it->second : false;
-}
+modelDevice->addToGroup(spec.primaryGroup);  
+modelDevice->setActiveGroup(spec.primaryGroup);
+
+--> PLEASE BE VERY EXACT ON WHERE to use device class (by primaryGroup) and where to use application Group (defaultGroup, activeGroup) Settings !!!!
+
 ```
 
 This is unreachable for VDC devices since `m_modelFeatures` is always empty for them.
 
-### 2.4 Runtime-Derived Features (Hardware Only)
+| `primaryGroup` value | Constant | UI color | Application |
+|---|---|---|---|
+| 0 | GroupIDBroadcast | — | Broadcast |
+| **1** | GroupIDYellow | **Yellow** | Lights / dimming |
+| **2** | GroupIDGray | **Grey** | Shadow / Blinds / Shading |
+| **3** | GroupIDHeating | **Blue** | Heating |
+| **4** | GroupIDCyan | **Cyan** | Audio |
+| **5** | GroupIDViolet | **Violet** | Video |
+| **6** | GroupIDRed | **Red** | Security (deprecated) |
+| **7** | GroupIDGreen | **Green** | Access (deprecated) |
+| **8** | GroupIDBlack | **Black** | Joker (reassignable) |
+| **9** | GroupIDCooling | **Blue** | Cooling |
+| **10** | GroupIDVentilation | **Blue** | Ventilation |
+| **11** | GroupIDWindow | **Blue** | Window / Shading |
+| **12** | GroupIDRecirculation | **Blue** | Recirculation |
+| **48** | GroupIDControlTemperature | **Blue** | Temperature set-point |
+| **64** | GroupIDApartmentVentilation | **Blue** | Apartment-level ventilation |
+| **65** | GroupIDApartmentAwnings | **Grey** | Apartment-level awnings / shading |
+| **69** | GroupIDApartmentRecirculation | **Blue** | Apartment-level recirculation |
+
+--> PLEASE BE VERY EXACT ON WHERE to use device class (by primaryGroup) and where to use application Group (defaultGroup, activeGroup)
+
+### 3.2 Device Overview Line Fields (Common to All Groups)
+
+Every device in the list shows these fields (from `jsonhelper.cpp::toJSON(DeviceReference)`):
+
+```
+name              ← from spec.name (VdSD property "name")
+dSUID             ← from spec.dSUID
+DisplayID         ← from spec.displayId (serial number / MAC)
+functionID        ← always 0 for VDC devices
+productID         ← always 0 for VDC devices
+modelFeatures     ← derived feature list
+isVdcDevice       ← true
+outputMode        ← from OutputMode enum
+groups            ← [primaryGroup] + any additional group memberships
+buttonInputMode   ← 255 = DEACTIVATED for output-only devices
+isPresent         ← true when connected
+on                ← current on/off state
+VdcConfigURL      ← from spec.configURL  (per-device config link)
+VdcHardwareInfo   ← from spec.model
+VdcHardwareVersion← from spec.hardwareVersion
+hasActions        ← set from OEM EAN database lookup (see §13)
+supportedBasicScenes ← bitmask of configurable scenes 0-63
+```
+
+> **Note:** `ValveType` only appears in the JSON if `isValveDevice() == true` — which is **never true** for VDC devices (see §14).
 
 The only features ever set in `m_modelFeatures`, via `Device::updateModelFeatures()` in `device.cpp:2445`:
 

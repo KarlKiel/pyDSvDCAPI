@@ -607,6 +607,15 @@ class Vdsd:
         | set(range(22, 25))  # 22–24
     )
 
+    # Channel-type IDs for ventilation control.
+    _VENTILATION_CHANNEL_TYPES: frozenset = frozenset({12, 13, 14, 15, 20, 21})
+
+    # Output-group IDs that represent climate/heating outputs.
+    _HEATING_OUTPUT_GROUPS: frozenset = frozenset({3, 9, 10, 12, 48})
+
+    # Primary-group IDs that represent climate sub-types with ventilation/FCU.
+    _VENT_FCU_PRIMARY_GROUPS: frozenset = frozenset({10, 12, 64, 69})
+
     def derive_model_features(self) -> None:
         """Derive and add model-feature flags from the configured components.
 
@@ -628,53 +637,74 @@ class Vdsd:
         before :meth:`announce`, derivation runs automatically at
         announcement time.
 
+        See ``docs/model-features-auto-assignment.md`` for the full rule
+        reference, rationale, and guidance on features that require
+        manual configuration.
+
         **Output / channel rules**
 
         * Any output present → ``"dontcare"``, ``"ledauto"``
         * Any channel with ``channelType`` in 1–12, 14–18, or 22–24 →
           ``"transt"``
-        * Output ``defaultGroup`` 2 → ``"shadeprops"``
-        * Output ``defaultGroup`` 2 and ``function`` POSITIONAL (2) →
-          ``"shadeposition"``; additionally a channel with
-          ``channelType`` 9 or 10 → ``"shadebladeang"`` +
-          ``"motiontimefins"``
+        * Output ``defaultGroup`` 2 (GREY/shades) → ``"shadeprops"``
+        * Output ``defaultGroup`` 2 + ``function`` POSITIONAL (2) →
+          ``"shadeposition"``; additionally ``channelType`` 9 or 10
+          present → ``"shadebladeang"`` + ``"motiontimefins"``
         * Output ``defaultGroup`` ≠ 2 → ``"outvalue8"``
-        * Output channels contain both ``channelType`` 2 (HUE) and 3
-          (SATURATION) → ``"outputchannels"`` (full-colour RGB/RGBW)
-        * Output channels contain both ``channelType`` 1 (BRIGHTNESS)
-          and 4 (COLOR_TEMPERATURE) → ``"outputchannels"`` (tunable
-          white)
-        * Output ``defaultGroup`` in {3, 9, 10, 12, 48} and
-          ``function`` ON_OFF (0) → ``"heatingoutmode"`` + ``"pwmvalue"``
+        * Both ``channelType`` 2 (HUE) and 3 (SATURATION) present, or
+          both 1 (BRIGHTNESS) and 4 (COLOR_TEMPERATURE) present →
+          ``"outputchannels"``
+        * ``function`` DIMMER (1), DIMMER_COLOR_TEMP (3), or
+          FULL_COLOR_DIMMER (4) → ``"dimtimeconfig"``,
+          ``"outmodeauto"``, ``"dimmodeconfig"``,
+          ``"customtransitiontime"``
+        * Output ``defaultGroup`` in {3, 9, 10, 12, 48} + ``function``
+          ON_OFF (0) → ``"heatingoutmode"`` + ``"pwmvalue"``
+        * ``channelType`` 16 (HEATING_POWER) present →
+          ``"heatingoutmode"`` + ``"pwmvalue"``
+        * Any ventilation channel (types 12, 13, 14, 15, 20, 21)
+          present → ``"ventconfig"``
 
         **Sensor rules**
 
-        * Sensor ``sensorType`` in {14, 15, 16, 17} (ACTIVE_POWER,
+        * ``sensorType`` in {14, 15, 16, 17} (ACTIVE_POWER,
           ELECTRIC_CURRENT, ENERGY_METER, APPARENT_POWER) →
           ``"consumption"``
+        * ``sensorType`` 14 (ACTIVE_POWER) → ``"consumptioneventled"``
+        * ``sensorType`` 16 (ENERGY_METER) → ``"consumptiontimer"``
+        * ``sensorType`` 1 (TEMPERATURE) + ``primaryGroup`` in
+          {3, 48} (BLUE_CLIMATE, BLUE_TEMPERATURE_CONTROL) →
+          ``"temperatureoffset"``
+
+        **Binary input rules**
+
+        * Binary input with ``group`` 8 → ``"akmsensor"`` +
+          ``"akminput"`` + ``"akmdelay"``
 
         **Button rules**
 
         * Any button → ``"pushbutton"`` + ``"pushbadvanced"``
         * Button with ``group`` ≠ 8 → ``"pushbarea"``
-        * Button with ``group`` ≠ 8 and ``supportsLocalKeyMode`` →
+        * Button with ``group`` ≠ 8 + ``supportsLocalKeyMode`` →
           ``"pushbdevice"``
-        * Button with ``group`` == 8 → ``"pushbsensor"`` + ``"highlevel"``
-        * Button with ``buttonType`` in {2, 3, 4, 5} → ``"pushbcombined"``
+        * Button with ``group`` == 8 → ``"pushbsensor"`` +
+          ``"highlevel"``
+        * Button with ``buttonType`` in {2, 3, 4, 5} →
+          ``"pushbcombined"``
         * Any button with ``dsIndex`` ≥ 1 → ``"twowayconfig"``
-
-        **Binary input rules**
-
-        * Binary input with ``group`` 8 → ``"akmsensor"`` + ``"akminput"``
-          + ``"akmdelay"``
 
         **Primary-group rules**
 
         * ``primaryGroup`` 3 (BLUE_CLIMATE) → ``"heatingprops"`` +
-          ``"heatinggroup"``; if output present also ``"valvetype"``
-        * ``primaryGroup`` 2 (GREY) with output → ``"locationconfig"`` +
-          ``"windprotectionconfigblind"`` (when a blade/angle channel
-          with ``channelType`` 9 or 10 is present) or
+          ``"heatinggroup"``; if output present also ``"valvetype"`` +
+          ``"extendedvalvetypes"``
+        * ``primaryGroup`` in {10, 12, 64, 69} (BLUE_VENTILATION,
+          BLUE_RECIRCULATION, APARTMENT_VENTILATION,
+          APARTMENT_RECIRCULATION) + output present → ``"fcu"`` +
+          ``"ventconfig"``
+        * ``primaryGroup`` 2 (GREY) + output present →
+          ``"locationconfig"`` + ``"windprotectionconfigblind"`` (when
+          ``channelType`` 9 or 10 present) or
           ``"windprotectionconfigawning"`` (otherwise)
         * ``primaryGroup`` 8 (BLACK/Joker) → ``"jokerconfig"`` +
           ``"highlevel"``
@@ -687,8 +717,9 @@ class Vdsd:
         Note: ``"outmode"``, ``"outmodeswitch"``, ``"outmodegeneric"``,
         ``"outmodetempcontrol"``, ``"leddark"``, ``"extradimmer"``,
         ``"umvrelay"``, ``"umroutmode"``, ``"jokertempcontrol"``,
-        ``"temperatureoffset"``, ``"impulseconfig"``,
-        ``"outconfigswitch"``, ``"customactivityconfig"`` and all
+        ``"impulseconfig"``, ``"outconfigswitch"``,
+        ``"customactivityconfig"``, ``"ftwtempcontrolventilationselect"``,
+        ``"ftwdisplaysettings"``, ``"ftwbacklighttimeout"`` and all
         hardware-specific features are **never** auto-derived.
         Add them manually via :meth:`add_model_feature` when needed.
         The features ``"outmodeenoceanvalve"``, ``"apartmentapplication"``,
@@ -709,12 +740,12 @@ class Vdsd:
             }
             has_blade_channel = bool(ch_types & {9, 10})
 
-            # transt
+            # transt: channels with smooth transition support
             if ch_types & self._TRANST_CHANNEL_TYPES:
                 self._model_features.add("transt")
 
             # shade vs. normal output
-            if dg == 2:
+            if dg == 2:  # GREY / shade group
                 self._model_features.add("shadeprops")
                 if fn == 2:  # OutputFunction.POSITIONAL
                     self._model_features.add("shadeposition")
@@ -724,21 +755,56 @@ class Vdsd:
             else:
                 self._model_features.add("outvalue8")
 
-            # outputchannels: HUE (2) AND SATURATION (3) both present
-            # (full-colour RGB/RGBW), OR BRIGHTNESS (1) AND
-            # COLOR_TEMPERATURE (4) both present (tunable white).
+            # multi-channel colour output:
+            #   HUE (2) + SATURATION (3) → RGB/RGBW full-colour
+            #   BRIGHTNESS (1) + COLOR_TEMPERATURE (4) → tunable white
             if {2, 3} <= ch_types or {1, 4} <= ch_types:
                 self._model_features.add("outputchannels")
 
-            # heating output modes
-            if dg in {3, 9, 10, 12, 48} and fn == 0:
+            # advanced dimmer features: DIMMER (1), DIMMER_COLOR_TEMP (3),
+            # FULL_COLOR_DIMMER (4)
+            if fn in {1, 3, 4}:
+                self._model_features.add("dimtimeconfig")
+                self._model_features.add("outmodeauto")
+                self._model_features.add("dimmodeconfig")
+                self._model_features.add("customtransitiontime")
+
+            # heating/climate valve output modes:
+            #   default group is a heating/climate group + ON_OFF function
+            if dg in self._HEATING_OUTPUT_GROUPS and fn == 0:
                 self._model_features.add("heatingoutmode")
                 self._model_features.add("pwmvalue")
 
+            # HEATING_POWER channel (16) always implies valve/heating output
+            if 16 in ch_types:
+                self._model_features.add("heatingoutmode")
+                self._model_features.add("pwmvalue")
+
+            # ventilation control channels → ventconfig
+            if ch_types & self._VENTILATION_CHANNEL_TYPES:
+                self._model_features.add("ventconfig")
+
         # ---- sensor / consumption rules ------------------------------
-        for si in self._sensor_inputs.values():
-            if int(si.sensor_type) in {14, 15, 16, 17}:
-                self._model_features.add("consumption")
+        sensor_types: set[int] = {
+            int(si.sensor_type) for si in self._sensor_inputs.values()
+        }
+
+        # base consumption display (any power/energy sensor)
+        if sensor_types & {14, 15, 16, 17}:
+            self._model_features.add("consumption")
+
+        # LED indication on consumption events (active power sensor)
+        if 14 in sensor_types:
+            self._model_features.add("consumptioneventled")
+
+        # consumption timer UI (cumulative energy sensor)
+        if 16 in sensor_types:
+            self._model_features.add("consumptiontimer")
+
+        # temperature offset UI: climate device with a room-temperature sensor
+        pg = int(self._primary_group) if self._primary_group is not None else 0
+        if 1 in sensor_types and pg in {3, 48}:  # TEMPERATURE + climate groups
+            self._model_features.add("temperatureoffset")
 
         # ---- binary input rules --------------------------------------
         for bi in self._binary_inputs.values():
@@ -771,23 +837,30 @@ class Vdsd:
                     self._model_features.add("twowayconfig")
 
         # ---- primary-group rules -------------------------------------
-        pg = int(self._primary_group) if self._primary_group is not None else 0
+        # (pg already computed above for the temperature-offset rule)
 
         if pg == 3:  # ColorClass.BLUE_CLIMATE
             self._model_features.add("heatingprops")
             self._model_features.add("heatinggroup")
             if self._output is not None:
                 self._model_features.add("valvetype")
+                self._model_features.add("extendedvalvetypes")
+
+        if pg in self._VENT_FCU_PRIMARY_GROUPS and self._output is not None:
+            # BLUE_VENTILATION (10), BLUE_RECIRCULATION (12),
+            # APARTMENT_VENTILATION (64), APARTMENT_RECIRCULATION (69)
+            self._model_features.add("fcu")
+            self._model_features.add("ventconfig")
 
         if pg == 2 and self._output is not None:  # ColorClass.GREY
             self._model_features.add("locationconfig")
-            ch_types_pg2 = {
+            ch_types_grey = {
                 int(ch.channel_type)
                 for ch in self._output.channels.values()
             }
-            if ch_types_pg2 & {9, 10}:  # blade/angle channel → jalousie/blind
+            if ch_types_grey & {9, 10}:  # slat/angle channel → jalousie/blind
                 self._model_features.add("windprotectionconfigblind")
-            else:  # no blade channel → awning / roller blind
+            else:  # no slat channel → awning / roller blind
                 self._model_features.add("windprotectionconfigawning")
 
         if pg == 8:  # ColorClass.BLACK (Joker)

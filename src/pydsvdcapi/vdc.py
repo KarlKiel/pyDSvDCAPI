@@ -422,6 +422,10 @@ class Vdc:
         device = self._devices.pop(key, None)
         if device is not None:
             logger.info("Removed device %s from vDC '%s'", key, self.name)
+            # Tear down any announced runtime state (alive timers, stored
+            # session, announced flag) so the detached device stops
+            # emitting notifications for its now-stale dSUIDs.
+            device.reset_announcement()
             if track_vanish:
                 dsuids = {str(vdsd.dsuid) for vdsd in device.vdsds.values()}
                 if dsuids:

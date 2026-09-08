@@ -1181,3 +1181,49 @@ class TestCorruptProtobuf:
 
         assert session.state is SessionState.CLOSED
         assert isinstance(session.disconnect_reason, ValueError)
+
+
+# ---------------------------------------------------------------------------
+# Announce pacing
+# ---------------------------------------------------------------------------
+
+
+class TestAnnouncePacing:
+    @pytest.mark.asyncio
+    async def test_pace_announce_spaces_sequential_calls(self):
+        """Consecutive pace_announce() calls are held at least one interval apart."""
+        _, vdc = _make_pair()
+        session = VdcSession(vdc, HOST_DSUID, announce_pace_interval=0.05)
+
+        start = asyncio.get_running_loop().time()
+        for _ in range(3):
+            await session.pace_announce()
+        elapsed = asyncio.get_running_loop().time() - start
+
+        # First call is free, the next two each wait one interval.
+        assert elapsed >= 0.10
+
+    @pytest.mark.asyncio
+    async def test_pace_announce_serialises_concurrent_calls(self):
+        """The pacing lock spaces announces even when driven concurrently."""
+        _, vdc = _make_pair()
+        session = VdcSession(vdc, HOST_DSUID, announce_pace_interval=0.05)
+
+        start = asyncio.get_running_loop().time()
+        await asyncio.gather(*[session.pace_announce() for _ in range(4)])
+        elapsed = asyncio.get_running_loop().time() - start
+
+        assert elapsed >= 0.15  # 3 gaps between 4 announces
+
+    @pytest.mark.asyncio
+    async def test_pace_announce_disabled_when_interval_zero(self):
+        """A zero interval turns pacing off entirely."""
+        _, vdc = _make_pair()
+        session = VdcSession(vdc, HOST_DSUID, announce_pace_interval=0.0)
+
+        start = asyncio.get_running_loop().time()
+        for _ in range(10):
+            await session.pace_announce()
+        elapsed = asyncio.get_running_loop().time() - start
+
+        assert elapsed < 0.02

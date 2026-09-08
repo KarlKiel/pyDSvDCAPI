@@ -46,6 +46,7 @@ from __future__ import annotations
 import asyncio
 import enum
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any, Final
 
@@ -67,6 +68,13 @@ MAX_SUPPORTED_API_VERSION: int = 4
 #: every ~45 s when the session is otherwise idle; 90 s ≈ 2× that
 #: interval gives a generous margin before declaring the connection dead.
 WATCHDOG_TIMEOUT_DEFAULT: Final[float] = 90.0
+
+#: Minimum spacing, in seconds, between consecutive
+#: ``VDC_SEND_ANNOUNCE_DEVICE`` sends on a session.  The dSS can be
+#: overwhelmed when a vDC re-announces many vdSDs back-to-back (e.g. after
+#: a reconnect or ``scanDevices``), so announce sends are paced at least
+#: this far apart.  Set to ``0`` to disable pacing.
+ANNOUNCE_PACE_INTERVAL_DEFAULT: Final[float] = 0.2
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +150,7 @@ class VdcSession:
         on_message: MessageCallback | None = None,
         on_hello: HelloCallback | None = None,
         watchdog_timeout: float = WATCHDOG_TIMEOUT_DEFAULT,
+        announce_pace_interval: float = ANNOUNCE_PACE_INTERVAL_DEFAULT,
     ) -> None:
         self._conn = connection
         self._host_dsuid = host_dsuid
@@ -164,6 +173,15 @@ class VdcSession:
 
         # Ping/pong counter.
         self._ping_count: int = 0
+
+        # Pace consecutive device announcements so a large (re-)announce
+        # does not flood the dSS.  Only the *send* is serialised via this
+        # lock — the response is awaited by the caller after the lock is
+        # released — so concurrent announces (see Vdc.announce_devices)
+        # still work.
+        self._announce_pace_interval: float = announce_pace_interval
+        self._announce_pace_lock = asyncio.Lock()
+        self._last_announce_send: float = 0.0
 
         # Inactivity watchdog: tracks time of last received message and
         # closes the connection if nothing arrives within the timeout.
@@ -640,6 +658,27 @@ class VdcSession:
         except Exception:
             self._pending_requests.pop(msg_id, None)
             raise
+
+    async def pace_announce(self) -> None:
+        """Block until the configured spacing has elapsed since the last
+        announce send on this session.
+
+        Called by :meth:`Vdsd.announce` before sending
+        ``VDC_SEND_ANNOUNCE_DEVICE`` so that a large (re-)announcement does
+        not flood the dSS with back-to-back messages.  The lock is held
+        only for the brief pacing sleep, never across a network
+        round-trip, so concurrent announcements are still allowed.
+        """
+        interval = self._announce_pace_interval
+        if interval <= 0:
+            return
+        async with self._announce_pace_lock:
+            now = time.monotonic()
+            wait = interval - (now - self._last_announce_send)
+            if wait > 0:
+                await asyncio.sleep(wait)
+                now = time.monotonic()
+            self._last_announce_send = now
 
     async def send_notification(self, msg: pb.Message) -> None:
         """Send a notification (no response expected, ``message_id = 0``).

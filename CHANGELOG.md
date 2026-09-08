@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Announce pacing: consecutive `VDC_SEND_ANNOUNCE_DEVICE` sends on a session are now spaced at least 200 ms apart (`VdcSession.pace_announce()`, `ANNOUNCE_PACE_INTERVAL_DEFAULT`). A large re-announcement — e.g. after a reconnect or `scanDevices` — no longer floods the dSS with back-to-back announces. Only the send is serialised; the response is still awaited concurrently, so multi-device `Vdc.announce_devices()` does not deadlock. Configurable via `VdcSession(..., announce_pace_interval=...)`; set to `0` to disable.
+
 ### Fixed
+- Removed devices/vDCs kept emitting for their stale dSUIDs. `Vdc.remove_device()`, `VdcHost.remove_vdc()`, and the `VDSM_SEND_REMOVE` handler detached the object from the registry but never tore down the announced runtime state of its vdSDs — so `SensorInput` alive timers (and any lingering references in user code) went on sending `VDC_SEND_PUSH_NOTIFICATION` for dSUIDs no longer in the configuration. Removal now calls `reset_announcement()` on the detached device/vDC (stops all alive timers, clears stored sessions, resets the announced flag). `Device.remove_vdsd()` also tears down an individual vdSD that is still announced after a partial announce.
+- Removing a device/vDC mid-session now sends `VDC_SEND_VANISH` to the vdSM immediately (`VdcHost._vanish_now`) instead of only queuing it for the next reconnect's `_flush_pending_vanish()`. The pending-vanish set is still kept as the offline fallback and retries anything that failed to send.
 - `progMode` changes applied via DSS `setProperty` were not persisted to YAML because `"prog_mode"` was missing from `Vdsd._TRACKED_ATTRS`. After restart the old value was restored. Now `prog_mode` is tracked and auto-saved like `zone_id` and `name`.
 - `CustomAction.apply_settings` did not trigger the auto-save chain, so custom action changes made by DSS were silently lost on restart. A `_schedule_auto_save()` call is now issued whenever settings change.
 

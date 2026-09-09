@@ -511,6 +511,10 @@ class VdcHost:
         vdc = self._vdcs.pop(key, None)
         if vdc is not None:
             logger.info("Removed vDC '%s' (dSUID %s)", vdc.name, key)
+            # Tear down announced runtime state (alive timers, stored
+            # sessions, announced flags) across every device/vdSD so the
+            # detached vDC stops emitting for its now-stale dSUIDs.
+            vdc.reset_announcement()
             # Collect the vDC dSUID and all Vdsd dSUIDs.  Device base
             # dSUIDs are not tracked by the vdSM as separate addressable
             # entities, so only Vdsd dSUIDs need an explicit vanish.
@@ -631,14 +635,51 @@ class VdcHost:
     # ---- persistence -------------------------------------------------
 
     def _add_pending_vanish(self, dsuids: Iterable[str]) -> None:
-        """Track dSUIDs that must be vanished on the next session.
+        """Track dSUIDs that must be vanished because a vDC or device was
+        removed.
 
-        Called when a vDC or device is removed while no session is active.
-        The set is persisted in YAML so a restart does not lose the list.
+        The set is persisted in YAML so a restart does not lose the list
+        and is flushed on the next session hello.  If a session is
+        already active the vanish is *also* sent immediately (see
+        :meth:`_vanish_now`) so the vdSM is told right away instead of
+        only on the next reconnect.
         """
+        dsuids = set(dsuids)
         self._pending_vanish.update(dsuids)
         if self._auto_save_enabled:
             self._schedule_auto_save()
+        if self._session is not None and dsuids:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                return
+            task = loop.create_task(self._vanish_now(dsuids))
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+
+    async def _vanish_now(self, dsuids: set[str]) -> None:
+        """Send ``VDC_SEND_VANISH`` for *dsuids* on the active session and
+        drop the ones that were sent from ``_pending_vanish``.
+
+        Best-effort: a failed send leaves the dSUID in ``_pending_vanish``
+        so the next ``_flush_pending_vanish`` retries it.
+        """
+        session = self._session
+        if session is None:
+            return
+        for dsuid_str in dsuids:
+            if dsuid_str not in self._pending_vanish:
+                continue
+            msg = pb.Message()
+            msg.type = pb.VDC_SEND_VANISH
+            msg.vdc_send_vanish.dSUID = dsuid_str
+            try:
+                await session.send_notification(msg)
+            except Exception:  # noqa: BLE001
+                logger.exception("Failed to send immediate vanish for %s", dsuid_str)
+            else:
+                self._pending_vanish.discard(dsuid_str)
+                logger.debug("Sent immediate vanish for %s", dsuid_str)
 
     def save(self) -> None:
         """Persist the current property tree to the YAML state file.

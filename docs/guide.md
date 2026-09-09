@@ -333,7 +333,9 @@ The host will:
 
 - Register itself via mDNS so the vdSM on the dSS can find it automatically
 - Accept the TCP connection and perform the `hello` handshake
-- Announce the vDC and all devices
+- Announce the vDC and all devices (per-device announce messages are spaced
+  ≥200&nbsp;ms apart so a large re-announcement does not flood the dSS — see
+  `VdcSession.pace_announce()` / `ANNOUNCE_PACE_INTERVAL_DEFAULT`)
 - Dispatch incoming commands to your callbacks
 - Push state changes to the dSS when you update a channel value
 - Persist the device tree to `state.yaml` on any configuration change
@@ -378,8 +380,11 @@ All parameters are keyword-only.
 ### vDC management methods
 
 - **`add_vdc(vdc)`** — register a `Vdc` with the host.
-- **`remove_vdc(dsuid)`** — remove a `Vdc`; schedules `VDC_SEND_VANISH` for all its
-  vdSDs.
+- **`remove_vdc(dsuid)`** — remove a `Vdc`. Tears down the announced runtime state
+  of every contained vdSD (stops alive timers, clears stored sessions) so the
+  detached vDC stops emitting for its stale dSUIDs, and sends `VDC_SEND_VANISH`
+  for all its vdSDs — immediately when a session is active, otherwise queued in
+  the pending-vanish list for the next reconnect.
 - **`get_vdc(dsuid)`** — look up a `Vdc` by dSUID; returns `None` if not found.
 - **`vdcs`** — read-only property returning `dict[str, Vdc]` keyed by dSUID string.
 
@@ -472,10 +477,13 @@ are required; `name` and `model` must be non-empty strings.
 ### Device management methods
 
 - **`add_device(device)`** — register a `Device` with this vDC.
-- **`remove_device(dsuid, track_vanish=True)`** — remove a `Device`; when
-  `track_vanish=True` (default), the vdSD dSUIDs are added to the pending-vanish
-  list so the vdSM removes them cleanly. Pass `track_vanish=False` when the removal
-  was already initiated by the vdSM.
+- **`remove_device(dsuid, track_vanish=True)`** — remove a `Device`. Always tears
+  down the announced runtime state of its vdSDs (stops alive timers, clears stored
+  sessions, resets the announced flag) so the detached device stops emitting for
+  its stale dSUIDs. When `track_vanish=True` (default) the vdSD dSUIDs are also
+  vanished at the vdSM — immediately when a session is active, otherwise added to
+  the pending-vanish list for the next reconnect. Pass `track_vanish=False` when
+  the removal was already initiated by the vdSM (`VDSM_SEND_REMOVE`).
 - **`get_device(dsuid)`** — look up a `Device` by base dSUID; returns `None` if not
   found.
 - **`get_vdsd_by_dsuid(dsuid)`** — find a `Vdsd` by its full (sub-device) dSUID
@@ -2797,6 +2805,13 @@ async def handle_vdsd_settings(vdsd: Vdsd, changed: dict[str, Any]) -> None:
 vdsd.on_settings_changed = handle_vdsd_settings
 ```
 
+> **Do not call `push_property` inside `on_settings_changed`.** DSS triggered the
+> `setProperty` itself and already knows the new value. Pushing it back is
+> redundant and sends the push notification *before* the `GENERIC_RESPONSE` for
+> the `setProperty` is delivered, which some vdSM firmware versions log as an
+> unexpected property notification. Use `on_settings_changed` only to update your
+> integration's state in reaction to DSS-driven changes.
+
 ### vdsd.push_property()
 
 ```python
@@ -2804,8 +2819,10 @@ await vdsd.push_property(properties: dict[str, Any]) -> None
 ```
 
 Pushes property changes from vDC to DSS via `VDC_SEND_PUSH_NOTIFICATION`. Use
-this after changing a property on the vdSD side (e.g. renaming the device or
-updating its zone) to notify DSS immediately without a vanish+re-announce cycle.
+this after changing a property **on the vDC side** (e.g. renaming the device or
+updating its zone from your integration code) to notify DSS immediately without a
+vanish+re-announce cycle. Do **not** call this in response to a DSS-initiated
+`setProperty` (i.e. from inside `on_settings_changed`).
 
 `properties` uses the same key names as `getProperty` responses:
 
@@ -2882,14 +2899,21 @@ The YAML file stores a complete structural snapshot of the entire vDC host:
 - `VdcHost` common properties (name, model, version, etc.)
 - `Vdc` properties (implementation ID, name, etc.)
 - Device structure: which devices exist, their base dSUIDs, sub-device indices
-- vdSD common properties (name, model, primary group, zone ID, model features, etc.)
+- vdSD common properties (name, model, primary group, zone ID, progMode, model features, etc.)
 - Output and output-channel descriptions and settings
+- Scene settings (per scene: dontCare, ignoreLocalPriority, effect, channel values)
 - Sensor input descriptions and settings
 - Binary input descriptions and settings
 - Button input descriptions and settings
 - Device state descriptions and device property descriptions and values
 - Device event descriptions
 - Action descriptions, standard actions, custom actions
+
+**Auto-save triggers:** any change to a tracked vdSD property (`name`, `zone_id`,
+`prog_mode`, …) immediately schedules a debounced save. Component settings changes
+(via `apply_settings`, `apply_scenes`) also trigger the same chain. There is no
+need to call `host.flush()` manually in normal operation; call it before shutdown to
+guarantee all pending writes are flushed to disk.
 
 ### What is NOT persisted
 
@@ -2901,8 +2925,11 @@ the YAML file:
 - Output channel current values after a session disconnect
 - Binary input state (current high/low readings)
 - Button click state
+- Device lifecycle state (`active` / `inactive`) — devices start as `ACTIVE` on
+  every restart; the owning integration is responsible for restoring a non-active
+  state if needed
 - Dynamic actions (always runtime-only)
-- Control values received from dSS
+- Control values received from DSS
 
 ### Three-file persistence strategy
 
@@ -3141,15 +3168,31 @@ from pydsvdcapi.vdc_host import DEFAULT_VDC_PORT, AUTO_SAVE_DELAY
 ### From pydsvdcapi.session
 
 ```python
-from pydsvdcapi.session import SUPPORTED_API_VERSION, MAX_SUPPORTED_API_VERSION
+from pydsvdcapi.session import (
+    SUPPORTED_API_VERSION,
+    MAX_SUPPORTED_API_VERSION,
+    ANNOUNCE_PACE_INTERVAL_DEFAULT,
+)
 ```
 
 | Constant | Value | Description |
 |---|---|---|
 | `SUPPORTED_API_VERSION` | `2` | Minimum vDC API version accepted during the hello handshake. |
 | `MAX_SUPPORTED_API_VERSION` | `4` | Maximum vDC API version accepted. Versions above this are rejected with `ERR_INCOMPATIBLE_API`. |
+| `ANNOUNCE_PACE_INTERVAL_DEFAULT` | `0.2` | Minimum spacing in seconds between consecutive `VDC_SEND_ANNOUNCE_DEVICE` sends on a session. Overridable per session via `VdcSession(..., announce_pace_interval=...)`; set to `0` to disable pacing. |
 
 The library negotiates the API version during every new session. If the vdSM
 announces an API version outside the range
 `[SUPPORTED_API_VERSION, MAX_SUPPORTED_API_VERSION]` the session is immediately
 closed with an incompatible-API error.
+
+### Announce pacing
+
+When a vDC re-announces many vdSDs in a burst — after a reconnect, a
+`scanDevices`, or a bulk `device.update()` — sending every
+`VDC_SEND_ANNOUNCE_DEVICE` back-to-back can overwhelm the dSS. `VdcSession`
+therefore spaces announce **sends** at least `ANNOUNCE_PACE_INTERVAL_DEFAULT`
+(200&nbsp;ms) apart via `VdcSession.pace_announce()`, which `Vdsd.announce()`
+awaits before each send. Only the send is serialised — the
+`GENERIC_RESPONSE` is still awaited concurrently — so multi-device
+`Vdc.announce_devices()` keeps working without deadlocking.

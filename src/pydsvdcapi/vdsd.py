@@ -265,6 +265,7 @@ class Vdsd:
             "device_class",
             "device_class_version",
             "zone_id",
+            "prog_mode",
         }
     )
 
@@ -2340,6 +2341,10 @@ class Vdsd:
             vdc.dsuid,
         )
 
+        # Space announce sends so a large (re-)announcement does not flood
+        # the dSS with back-to-back messages.
+        await session.pace_announce()
+
         response = await session.send_request(msg)
 
         code = response.generic_response.code
@@ -2553,7 +2558,13 @@ class Device:
                 "Use device.update() to modify structure after "
                 "announcement."
             )
-        return self._vdsds.pop(subdevice_index, None)
+        vdsd = self._vdsds.pop(subdevice_index, None)
+        if vdsd is not None and vdsd.is_announced:
+            # A partial announce can leave an individual vdSD announced
+            # while the device flag is still False.  Tear it down so it
+            # stops emitting for its now-stale dSUID.
+            vdsd.reset_announcement()
+        return vdsd
 
     def get_vdsd(self, subdevice_index: int) -> Vdsd | None:
         """Look up a vdSD by sub-device index."""

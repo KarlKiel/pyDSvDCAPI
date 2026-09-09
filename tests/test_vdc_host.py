@@ -7,7 +7,13 @@ import pytest
 
 from pydsvdcapi import vdc_messages_pb2 as pb
 from pydsvdcapi.dsuid import DsUid, DsUidNamespace
-from pydsvdcapi.enums import ColorGroup, DeviceLifecycleState
+from pydsvdcapi.enums import (
+    ColorGroup,
+    DeviceLifecycleState,
+    SensorType,
+    SensorUsage,
+)
+from pydsvdcapi.sensor_input import SensorInput
 from pydsvdcapi.session import VdcSession
 from pydsvdcapi.vdc import Vdc
 from pydsvdcapi.vdc_host import (
@@ -1027,6 +1033,128 @@ class TestPendingVanishWiring:
 
         assert host._pending_vanish == set()
         assert vdc.get_device(device.dsuid) is None
+
+
+# ---------------------------------------------------------------------------
+# Removal must tear down the announced runtime state of the removed vdSDs
+# ---------------------------------------------------------------------------
+
+
+def _announce_vdsd_with_sensor(vdsd, session, *, alive_sign_interval=30.0):
+    """Simulate an announced vdSD carrying a sensor with a running alive timer."""
+    si = SensorInput(
+        vdsd=vdsd,
+        ds_index=0,
+        sensor_type=SensorType.TEMPERATURE,
+        sensor_usage=SensorUsage.ROOM,
+        min_value=-20.0,
+        max_value=60.0,
+        resolution=0.1,
+        alive_sign_interval=alive_sign_interval,
+    )
+    vdsd.add_sensor_input(si)
+    vdsd._announced = True
+    vdsd._session = session
+    si.start_alive_timer(session)
+    return si
+
+
+class TestRemovalTearsDownAnnouncedState:
+    """A removed device/vDC must stop emitting for its (now stale) dSUIDs."""
+
+    @pytest.mark.asyncio
+    async def test_remove_device_resets_vdsd_announcement(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        vdsd._announced = True
+        vdsd._session = session
+
+        vdc.remove_device(device.dsuid)
+
+        assert vdsd.is_announced is False
+        assert vdsd._session is None
+
+    @pytest.mark.asyncio
+    async def test_remove_device_stops_sensor_alive_timer(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        si = _announce_vdsd_with_sensor(vdsd, session)
+        assert si._alive_timer_handle is not None
+
+        vdc.remove_device(device.dsuid)
+
+        assert si._alive_timer_handle is None
+        assert si._session is None
+
+    @pytest.mark.asyncio
+    async def test_remove_vdc_resets_all_vdsd_announcement(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        si = _announce_vdsd_with_sensor(vdsd, session)
+
+        host.remove_vdc(vdc.dsuid)
+
+        assert vdsd.is_announced is False
+        assert vdsd._session is None
+        assert si._alive_timer_handle is None
+
+    @pytest.mark.asyncio
+    async def test_handle_remove_resets_vdsd_announcement(self):
+        host, _vdc, _device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        si = _announce_vdsd_with_sensor(vdsd, session)
+        msg = _make_remove_msg(str(vdsd.dsuid))
+
+        await host._handle_remove(msg)
+
+        assert vdsd.is_announced is False
+        assert si._alive_timer_handle is None
+
+    @pytest.mark.asyncio
+    async def test_remove_device_mid_session_sends_vanish_now(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        host._session = session
+        vdsd._announced = True
+        vdsd._session = session
+
+        vdc.remove_device(device.dsuid)
+        await asyncio.sleep(0)  # let the scheduled vanish task run
+
+        sent = [
+            call.args[0].vdc_send_vanish.dSUID
+            for call in session.send_notification.call_args_list
+            if call.args[0].type == pb.VDC_SEND_VANISH
+        ]
+        assert str(vdsd.dsuid) in sent
+        assert str(vdsd.dsuid) not in host._pending_vanish
+
+    def test_remove_device_offline_still_queues_pending_vanish(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        # No active session.
+        vdc.remove_device(device.dsuid)
+
+        assert str(vdsd.dsuid) in host._pending_vanish
+
+    def test_remove_vdsd_of_announced_vdsd_tears_down(self):
+        host, vdc, device, vdsd = _make_host_with_device()
+        session = MagicMock(spec=VdcSession)
+        session.send_notification = AsyncMock()
+        si = _announce_vdsd_with_sensor(vdsd, session)
+        # Device-level flag stays False (e.g. a partial announce), so
+        # remove_vdsd() is allowed even though this vdSD is announced.
+        assert device.is_announced is False
+
+        removed = device.remove_vdsd(vdsd.subdevice_index)
+
+        assert removed is vdsd
+        assert vdsd.is_announced is False
+        assert si._alive_timer_handle is None
 
 
 class TestDisconnectCallback:

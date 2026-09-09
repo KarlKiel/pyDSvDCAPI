@@ -676,9 +676,7 @@ class VdcHost:
             try:
                 await session.send_notification(msg)
             except Exception:  # noqa: BLE001
-                logger.exception(
-                    "Failed to send immediate vanish for %s", dsuid_str
-                )
+                logger.exception("Failed to send immediate vanish for %s", dsuid_str)
             else:
                 self._pending_vanish.discard(dsuid_str)
                 logger.debug("Sent immediate vanish for %s", dsuid_str)

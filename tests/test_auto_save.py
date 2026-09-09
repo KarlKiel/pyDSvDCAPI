@@ -281,10 +281,14 @@ class TestPrivateAttrsIgnored:
 
 def _make_persisted_scaffold(path):
     host = VdcHost(mac=TEST_MAC, state_path=path)
-    vdc = Vdc(host=host, implementation_id="x-persist-test", name="Persist vDC", model="P1")
+    vdc = Vdc(
+        host=host, implementation_id="x-persist-test", name="Persist vDC", model="P1"
+    )
     base = DsUid.from_name_in_space("persist-dev", DsUidNamespace.VDC)
     device = Device(vdc=vdc, dsuid=base)
-    vdsd = Vdsd(device=device, primary_group=ColorGroup.YELLOW, name="PersistDev", model="PM")
+    vdsd = Vdsd(
+        device=device, primary_group=ColorGroup.YELLOW, name="PersistDev", model="PM"
+    )
     device.add_vdsd(vdsd)
     vdc.add_device(device)
     host.add_vdc(vdc)
@@ -321,10 +325,14 @@ class TestVdsdPropertyPersistence:
         path = tmp_path / "host.yaml"
         host, vdsd = _make_persisted_scaffold(path)
 
-        action = CustomAction(vdsd, ds_index=0, name="custom.test", action="play", title="Old")
+        action = CustomAction(
+            vdsd, ds_index=0, name="custom.test", action="play", title="Old"
+        )
         vdsd._custom_actions[0] = action
 
-        await host._apply_vdsd_set_property(vdsd, {"customActions": {"0": {"title": "New"}}})
+        await host._apply_vdsd_set_property(
+            vdsd, {"customActions": {"0": {"title": "New"}}}
+        )
         host.flush()
 
         data = yaml.safe_load(path.read_text())

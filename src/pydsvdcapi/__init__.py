@@ -2,7 +2,7 @@
 # Copyright (C) 2024–2026 Arne Speck
 """pydsvdcapi - Python library for the DSvDC API."""
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"
 
 __all__ = [
     # Version
@@ -70,6 +70,7 @@ __all__ = [
     # Persistence
     "PropertyStore",
     # Session
+    "ANNOUNCE_PACE_INTERVAL_DEFAULT",
     "SUPPORTED_API_VERSION",
     "MAX_SUPPORTED_API_VERSION",
     "HelloCallback",
@@ -275,6 +276,7 @@ from pydsvdcapi.sensor_input import (  # noqa: F401
     SensorInputSettingsChangedCallback,
 )
 from pydsvdcapi.session import (  # noqa: F401
+    ANNOUNCE_PACE_INTERVAL_DEFAULT,
     MAX_SUPPORTED_API_VERSION,
     SUPPORTED_API_VERSION,
     HelloCallback,

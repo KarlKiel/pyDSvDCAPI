@@ -333,7 +333,9 @@ The host will:
 
 - Register itself via mDNS so the vdSM on the dSS can find it automatically
 - Accept the TCP connection and perform the `hello` handshake
-- Announce the vDC and all devices
+- Announce the vDC and all devices (per-device announce messages are spaced
+  ≥200&nbsp;ms apart so a large re-announcement does not flood the dSS — see
+  `VdcSession.pace_announce()` / `ANNOUNCE_PACE_INTERVAL_DEFAULT`)
 - Dispatch incoming commands to your callbacks
 - Push state changes to the dSS when you update a channel value
 - Persist the device tree to `state.yaml` on any configuration change
@@ -378,8 +380,11 @@ All parameters are keyword-only.
 ### vDC management methods
 
 - **`add_vdc(vdc)`** — register a `Vdc` with the host.
-- **`remove_vdc(dsuid)`** — remove a `Vdc`; schedules `VDC_SEND_VANISH` for all its
-  vdSDs.
+- **`remove_vdc(dsuid)`** — remove a `Vdc`. Tears down the announced runtime state
+  of every contained vdSD (stops alive timers, clears stored sessions) so the
+  detached vDC stops emitting for its stale dSUIDs, and sends `VDC_SEND_VANISH`
+  for all its vdSDs — immediately when a session is active, otherwise queued in
+  the pending-vanish list for the next reconnect.
 - **`get_vdc(dsuid)`** — look up a `Vdc` by dSUID; returns `None` if not found.
 - **`vdcs`** — read-only property returning `dict[str, Vdc]` keyed by dSUID string.
 
@@ -472,10 +477,13 @@ are required; `name` and `model` must be non-empty strings.
 ### Device management methods
 
 - **`add_device(device)`** — register a `Device` with this vDC.
-- **`remove_device(dsuid, track_vanish=True)`** — remove a `Device`; when
-  `track_vanish=True` (default), the vdSD dSUIDs are added to the pending-vanish
-  list so the vdSM removes them cleanly. Pass `track_vanish=False` when the removal
-  was already initiated by the vdSM.
+- **`remove_device(dsuid, track_vanish=True)`** — remove a `Device`. Always tears
+  down the announced runtime state of its vdSDs (stops alive timers, clears stored
+  sessions, resets the announced flag) so the detached device stops emitting for
+  its stale dSUIDs. When `track_vanish=True` (default) the vdSD dSUIDs are also
+  vanished at the vdSM — immediately when a session is active, otherwise added to
+  the pending-vanish list for the next reconnect. Pass `track_vanish=False` when
+  the removal was already initiated by the vdSM (`VDSM_SEND_REMOVE`).
 - **`get_device(dsuid)`** — look up a `Device` by base dSUID; returns `None` if not
   found.
 - **`get_vdsd_by_dsuid(dsuid)`** — find a `Vdsd` by its full (sub-device) dSUID
@@ -3160,15 +3168,31 @@ from pydsvdcapi.vdc_host import DEFAULT_VDC_PORT, AUTO_SAVE_DELAY
 ### From pydsvdcapi.session
 
 ```python
-from pydsvdcapi.session import SUPPORTED_API_VERSION, MAX_SUPPORTED_API_VERSION
+from pydsvdcapi.session import (
+    SUPPORTED_API_VERSION,
+    MAX_SUPPORTED_API_VERSION,
+    ANNOUNCE_PACE_INTERVAL_DEFAULT,
+)
 ```
 
 | Constant | Value | Description |
 |---|---|---|
 | `SUPPORTED_API_VERSION` | `2` | Minimum vDC API version accepted during the hello handshake. |
 | `MAX_SUPPORTED_API_VERSION` | `4` | Maximum vDC API version accepted. Versions above this are rejected with `ERR_INCOMPATIBLE_API`. |
+| `ANNOUNCE_PACE_INTERVAL_DEFAULT` | `0.2` | Minimum spacing in seconds between consecutive `VDC_SEND_ANNOUNCE_DEVICE` sends on a session. Overridable per session via `VdcSession(..., announce_pace_interval=...)`; set to `0` to disable pacing. |
 
 The library negotiates the API version during every new session. If the vdSM
 announces an API version outside the range
 `[SUPPORTED_API_VERSION, MAX_SUPPORTED_API_VERSION]` the session is immediately
 closed with an incompatible-API error.
+
+### Announce pacing
+
+When a vDC re-announces many vdSDs in a burst — after a reconnect, a
+`scanDevices`, or a bulk `device.update()` — sending every
+`VDC_SEND_ANNOUNCE_DEVICE` back-to-back can overwhelm the dSS. `VdcSession`
+therefore spaces announce **sends** at least `ANNOUNCE_PACE_INTERVAL_DEFAULT`
+(200&nbsp;ms) apart via `VdcSession.pace_announce()`, which `Vdsd.announce()`
+awaits before each send. Only the send is serialised — the
+`GENERIC_RESPONSE` is still awaited concurrently — so multi-device
+`Vdc.announce_devices()` keeps working without deadlocking.

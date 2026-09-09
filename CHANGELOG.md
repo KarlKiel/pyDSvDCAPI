@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-09-09
+
 ### Added
 - Announce pacing: consecutive `VDC_SEND_ANNOUNCE_DEVICE` sends on a session are now spaced at least 200 ms apart (`VdcSession.pace_announce()`, `ANNOUNCE_PACE_INTERVAL_DEFAULT`). A large re-announcement — e.g. after a reconnect or `scanDevices` — no longer floods the dSS with back-to-back announces. Only the send is serialised; the response is still awaited concurrently, so multi-device `Vdc.announce_devices()` does not deadlock. Configurable via `VdcSession(..., announce_pace_interval=...)`; set to `0` to disable.
 
@@ -185,6 +187,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DsUid` — dSUID encoding/decoding with multiple creation strategies.
 - Property handling helpers (`build_get_property_response`, etc.).
 
+[0.9.2]: https://github.com/KarlKiel/pyDSvDCAPI/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/KarlKiel/pyDSvDCAPI/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/KarlKiel/pyDSvDCAPI/compare/v0.8.9...v0.9.0
 [0.8.9]: https://github.com/KarlKiel/pyDSvDCAPI/compare/v0.8.8...v0.8.9
